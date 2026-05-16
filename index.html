@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pick Productivity</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app">
+    <section class="panel">
+      <p class="eyebrow">Pick Productivity</p>
+      <h1>เลือกงานถัดไปให้เริ่มได้ง่ายขึ้น</h1>
+      <p class="intro">เพิ่มรายการงาน แล้วสุ่มเลือกหนึ่งอย่างเพื่อเริ่มลงมือทันที</p>
+
+      <form id="taskForm" class="task-form">
+        <input id="taskInput" type="text" placeholder="พิมพ์งานที่อยากทำ" autocomplete="off">
+        <button type="submit">เพิ่ม</button>
+      </form>
+
+      <div class="actions">
+        <button id="pickButton" type="button">สุ่มเลือกงาน</button>
+        <button id="clearButton" type="button" class="secondary">ล้างทั้งหมด</button>
+      </div>
+
+      <p id="pickedTask" class="picked">ยังไม่ได้เลือกงาน</p>
+      <ul id="taskList" class="task-list"></ul>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
