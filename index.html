@@ -3,28 +3,116 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pick Productivity</title>
+  <title>Pick Productivity Dashboard</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <main class="app">
-    <section class="panel">
-      <p class="eyebrow">Pick Productivity</p>
-      <h1>เลือกงานถัดไปให้เริ่มได้ง่ายขึ้น</h1>
-      <p class="intro">เพิ่มรายการงาน แล้วสุ่มเลือกหนึ่งอย่างเพื่อเริ่มลงมือทันที</p>
-
-      <form id="taskForm" class="task-form">
-        <input id="taskInput" type="text" placeholder="พิมพ์งานที่อยากทำ" autocomplete="off">
-        <button type="submit">เพิ่ม</button>
-      </form>
-
-      <div class="actions">
-        <button id="pickButton" type="button">สุ่มเลือกงาน</button>
-        <button id="clearButton" type="button" class="secondary">ล้างทั้งหมด</button>
+  <main class="app-shell">
+    <section class="hero-card">
+      <div class="hero-copy">
+        <p class="eyebrow">Pick Productivity Dashboard</p>
+        <h1>Picking Productivity - Overall (หยิบ)</h1>
+        <p class="intro">Dashboard นี้ใช้ค่า Average Pick/Hr จาก Results Master Column AF เท่านั้น และตัดค่า 0 ออกจากการเฉลี่ยอัตโนมัติ</p>
       </div>
+      <div class="hero-actions">
+        <button id="refreshButton" type="button">รีเฟรชข้อมูล</button>
+        <span id="syncStatus" class="sync-status">กำลังโหลดข้อมูล...</span>
+      </div>
+    </section>
 
-      <p id="pickedTask" class="picked">ยังไม่ได้เลือกงาน</p>
-      <ul id="taskList" class="task-list"></ul>
+    <section class="filter-card" aria-label="ตัวกรองข้อมูล">
+      <div class="quick-filters">
+        <button class="chip active" type="button" data-range="all">ทั้งหมด</button>
+        <button class="chip" type="button" data-range="today">วันนี้</button>
+        <button class="chip" type="button" data-range="week">สัปดาห์นี้</button>
+        <button class="chip" type="button" data-range="month">เดือนนี้</button>
+      </div>
+      <div class="date-filters">
+        <label>
+          วันที่เริ่มต้น
+          <input id="startDate" type="date">
+        </label>
+        <label>
+          วันที่สิ้นสุด
+          <input id="endDate" type="date">
+        </label>
+        <button id="applyDateButton" class="secondary" type="button">ใช้ Filter</button>
+      </div>
+    </section>
+
+    <section class="summary-grid" aria-label="KPI Summary">
+      <article class="kpi-card main-kpi" id="overallCard">
+        <div class="kpi-topline">
+          <span>Overall Avg Pick/Hr</span>
+          <strong id="overallStatus">-</strong>
+        </div>
+        <div class="kpi-value" id="overallAverage">-</div>
+        <div class="target-row">
+          <span>Target ≥ 170</span>
+          <span id="overallGap">-</span>
+        </div>
+        <div class="progress-track"><div id="overallProgress" class="progress-fill"></div></div>
+      </article>
+
+      <article class="kpi-card soft">
+        <span class="card-label">รายการที่นำมาเฉลี่ย</span>
+        <strong id="validRows">-</strong>
+        <small>ตัดค่า 0 / ค่าว่าง / ไม่ใช่ตัวเลขออกแล้ว</small>
+      </article>
+
+      <article class="kpi-card soft">
+        <span class="card-label">รายการทั้งหมดในช่วงที่เลือก</span>
+        <strong id="totalRows">-</strong>
+        <small id="excludedRows">-</small>
+      </article>
+    </section>
+
+    <section class="section-header">
+      <div>
+        <p class="eyebrow">Breakdown</p>
+        <h2>Picking Productivity แยกตามประเภท Rack / EA</h2>
+      </div>
+      <p class="hint">Main KPI: Full Rack 37% / Half Rack 48% / EA 15%</p>
+    </section>
+
+    <section class="category-grid" id="categoryGrid" aria-label="Category KPI"></section>
+
+    <section class="chart-card">
+      <div class="chart-head">
+        <div>
+          <p class="eyebrow">Average by Type</p>
+          <h2>เทียบค่าเฉลี่ยกับ Target</h2>
+        </div>
+        <span id="chartNote" class="sync-status">-</span>
+      </div>
+      <div id="barChart" class="bar-chart" aria-label="กราฟ KPI"></div>
+    </section>
+
+    <section class="table-card">
+      <div class="chart-head">
+        <div>
+          <p class="eyebrow">Data Quality</p>
+          <h2>ตัวอย่างข้อมูลที่ถูกตัดออกจาก Average</h2>
+        </div>
+        <span class="hint">ค่า AF เป็น 0 / ว่าง / อ่านไม่ได้</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>วันที่</th>
+              <th>Name</th>
+              <th>User ID</th>
+              <th>Total pick</th>
+              <th>Average Pick/Hr (AF)</th>
+              <th>เหตุผล</th>
+            </tr>
+          </thead>
+          <tbody id="excludedTableBody">
+            <tr><td colspan="6">กำลังโหลดข้อมูล...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
   </main>
 
