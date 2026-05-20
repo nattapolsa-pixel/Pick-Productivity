@@ -8,7 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link rel="preconnect" href="https://script.google.com">
   <link rel="preconnect" href="https://script.googleusercontent.com">
-  <link rel="stylesheet" href="styles.css?v=target-settings-20260520">
+  <link rel="stylesheet" href="styles.css?v=layout-fix-20260520">
 </head>
 <body>
   <div class="dashboard-ambient" aria-hidden="true">
@@ -48,13 +48,6 @@
         <input id="endDate" type="date" class="date-input" placeholder="วันสิ้นสุด">
         <button id="applyDateButton" class="btn-apply" type="button">ใช้</button>
       </div>
-      <button id="targetSettingsButton" class="btn-target" type="button" aria-haspopup="dialog">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <path d="M2 11h10M3 8h8M4 5h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          <path d="M10 2v3M4 8v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".7"/>
-        </svg>
-        Target
-      </button>
       <button id="refreshButton" class="btn-refresh" type="button">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path d="M13 7A6 6 0 1 1 7 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -74,7 +67,7 @@
       <div class="sidebar-kpi-mini">
         <div class="sidebar-kpi-label">Overall Avg Pick/Hr</div>
         <div class="sidebar-kpi-value" id="sidebarOverall">—</div>
-        <div class="sidebar-kpi-target" data-target-label="overall">Target ≥ 170</div>
+        <div class="sidebar-kpi-target">Target ≥ 170</div>
         <div class="sidebar-progress-track">
           <div class="sidebar-progress-fill" id="sidebarProgress"></div>
         </div>
@@ -92,16 +85,6 @@
             </svg>
           </span>
           <span class="nav-label">Overview</span>
-        </button></li>
-        <li><button class="nav-item" data-tab="present">
-          <span class="nav-icon">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M2 11.5h12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".45"/>
-              <path d="M3 10l2.4-3 2.2 1.7L10.6 4 13 6.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-              <circle cx="10.6" cy="4" r="1.1" fill="currentColor" opacity=".8"/>
-            </svg>
-          </span>
-          <span class="nav-label">Present</span>
         </button></li>
         <li><button class="nav-item" data-tab="rack">
           <span class="nav-icon">
@@ -191,7 +174,7 @@
             </div>
             <div class="kpi-main-number" id="overallAverage">—</div>
             <div class="kpi-main-sub">
-              <span data-target-label="overall">Target ≥ 170</span>
+              <span>Target ≥ 170</span>
               <span id="overallGap">—</span>
             </div>
             <div class="progress-track"><div id="overallProgress" class="progress-fill"></div></div>
@@ -265,65 +248,6 @@
         </div>
       </section>
 
-
-      <!-- TAB: PRESENT -->
-      <section class="tab-panel" id="tab-present">
-        <div class="panel-header present-header">
-          <div>
-            <p class="panel-eyebrow">PRESENT</p>
-            <h1 class="panel-title">Executive Summary</h1>
-          </div>
-          <div class="present-range-switch" aria-label="เลือกช่วงสรุปผู้บริหาร">
-            <button type="button" class="present-range-btn" data-present-range="week">Weekly</button>
-            <button type="button" class="present-range-btn" data-present-range="month">Monthly</button>
-          </div>
-        </div>
-
-        <section class="present-hero" aria-label="สรุปภาพรวมสำหรับผู้บริหาร">
-          <article class="present-narrative-card">
-            <div class="present-card-topline">
-              <span>AI-STYLE BRIEF</span>
-              <strong id="presentPeriodLabel">—</strong>
-            </div>
-            <h2 id="presentHeadline">กำลังวิเคราะห์ข้อมูล...</h2>
-            <p id="presentNarrative">ระบบจะสรุปภาพรวม Productivity จากทุกเมนูให้เป็นภาษาผู้บริหารหลังโหลดข้อมูลเสร็จ</p>
-          </article>
-
-          <aside class="present-score-card" id="presentScoreCard">
-            <span>Overall Avg Pick/Hr</span>
-            <strong id="presentOverallScore">—</strong>
-            <small id="presentOverallStatus">—</small>
-          </aside>
-        </section>
-
-        <div class="present-kpi-grid" id="presentKpiGrid" aria-label="Executive KPI summary"></div>
-
-        <section class="present-brief-grid" aria-label="AI summary details">
-          <article class="present-brief-card is-highlight">
-            <div class="present-brief-head">
-              <span>WHAT IS GOOD</span>
-              <h2>จุดที่ดี</h2>
-            </div>
-            <ul id="presentHighlights" class="present-list"></ul>
-          </article>
-
-          <article class="present-brief-card is-risk">
-            <div class="present-brief-head">
-              <span>WATCH OUT</span>
-              <h2>จุดที่ควรระวัง</h2>
-            </div>
-            <ul id="presentRisks" class="present-list"></ul>
-          </article>
-
-          <article class="present-brief-card is-action">
-            <div class="present-brief-head">
-              <span>NEXT ACTION</span>
-              <h2>ข้อเสนอให้ทำต่อ</h2>
-            </div>
-            <ul id="presentActions" class="present-list"></ul>
-          </article>
-        </section>
-      </section>
       <!-- TAB: RACK -->
       <section class="tab-panel" id="tab-rack">
         <div class="panel-header">
@@ -413,56 +337,7 @@
     </main>
   </div>
 
-
-  <div class="target-modal" id="targetSettingsModal" hidden>
-    <div class="target-modal-backdrop" data-target-close></div>
-    <section class="target-dialog" role="dialog" aria-modal="true" aria-labelledby="targetSettingsTitle">
-      <div class="target-dialog-head">
-        <div>
-          <p class="panel-eyebrow">TARGET SETTINGS</p>
-          <h2 id="targetSettingsTitle">ตั้งค่า Target</h2>
-        </div>
-        <button id="targetSettingsClose" class="target-icon-btn" type="button" aria-label="ปิดหน้าตั้งค่า Target">×</button>
-      </div>
-
-      <p class="target-dialog-desc">
-        เปลี่ยนค่า Target แล้ว Dashboard จะคำนวณสี สถานะ และคำสรุปใหม่ทันทีในเครื่องนี้
-      </p>
-
-      <form id="targetSettingsForm" class="target-form">
-        <label class="target-field">
-          <span>Overall / Shift / BU</span>
-          <input type="number" min="1" step="1" data-target-input="overall" inputmode="numeric">
-        </label>
-        <label class="target-field">
-          <span>Full Rack</span>
-          <input type="number" min="1" step="1" data-target-input="fullRack" inputmode="numeric">
-        </label>
-        <label class="target-field">
-          <span>Half Rack</span>
-          <input type="number" min="1" step="1" data-target-input="halfRack" inputmode="numeric">
-        </label>
-        <label class="target-field">
-          <span>EA</span>
-          <input type="number" min="1" step="1" data-target-input="ea" inputmode="numeric">
-        </label>
-        <label class="target-field">
-          <span>Training</span>
-          <input type="number" min="1" step="1" data-target-input="training" inputmode="numeric">
-        </label>
-
-        <div class="target-form-note">
-          Zone จะใช้ Target ตามประเภท Rack / EA และ Training ใช้ Target ของ Training โดยตรง
-        </div>
-
-        <div class="target-dialog-actions">
-          <button id="targetSettingsReset" class="btn-target-secondary" type="button">กลับค่าเริ่มต้น</button>
-          <button class="btn-target-primary" type="submit">บันทึก Target</button>
-        </div>
-      </form>
-    </section>
-  </div>
-  <script src="script.js?v=target-settings-20260520"></script>
+  <script src="script.js?v=layout-fix-20260520"></script>
   <script>
     // ===== TAB SWITCHING =====
     document.querySelectorAll('.nav-item').forEach(btn => {

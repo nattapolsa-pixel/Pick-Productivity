@@ -2,32 +2,15 @@ const RESULTS_API_URL = "https://script.google.com/macros/s/AKfycbyby7nOGMZe-w8p
 const REFRESH_INTERVAL_MS = 60 * 1000;
 const REQUEST_TIMEOUT_MS = 45000;
 const DAILY_INDEX_TIMEOUT_MS = 45000;
-const DASHBOARD_CACHE_PREFIX = "pickProductivityDashboardCache:v37-target-settings";
-const TARGET_STORAGE_KEY = "pickProductivityTargets:v1";
+const DASHBOARD_CACHE_PREFIX = "pickProductivityDashboardCache:v36-training-target-100";
 
-const DEFAULT_TARGETS = Object.freeze({
+const TARGETS = {
   overall: 170,
   fullRack: 170,
   halfRack: 200,
   ea: 170,
   training: 100,
-});
-
-function readStoredTargets() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(TARGET_STORAGE_KEY) || "{}");
-    return Object.keys(DEFAULT_TARGETS).reduce((config, key) => {
-      const value = Number(saved[key]);
-      config[key] = Number.isFinite(value) && value > 0 ? Math.round(value) : DEFAULT_TARGETS[key];
-      return config;
-    }, {});
-  } catch (error) {
-    console.warn(error);
-    return { ...DEFAULT_TARGETS };
-  }
-}
-
-const TARGETS = readStoredTargets();
+};
 
 const CATEGORY_CONFIG = [
   {
@@ -100,42 +83,7 @@ const BU_GROUPS = [
   { key: "other", title: "Other BU", label: "Other BU", focus: false, pickMix: {} },
 ];
 
-function getPickTypeTarget(key) {
-  if (key === "fullRack") return TARGETS.fullRack;
-  if (key === "halfRack") return TARGETS.halfRack;
-  if (key === "ea") return TARGETS.ea;
-  return TARGETS.overall;
-}
-
-function syncTargetReferences() {
-  CATEGORY_CONFIG.forEach((config) => {
-    config.target = getPickTypeTarget(config.key);
-  });
-
-  PICK_TYPE_DETAILS.forEach((detail) => {
-    detail.target = getPickTypeTarget(detail.key);
-  });
-
-  ZONE_GROUPS.forEach((group) => {
-    group.target = getPickTypeTarget(group.key);
-  });
-}
-
-function saveTargetsToStorage() {
-  localStorage.setItem(TARGET_STORAGE_KEY, JSON.stringify(TARGETS));
-}
-
-syncTargetReferences();
-
 const refreshButton = document.querySelector("#refreshButton");
-const targetSettingsButton = document.querySelector("#targetSettingsButton");
-const targetSettingsModal = document.querySelector("#targetSettingsModal");
-const targetSettingsForm = document.querySelector("#targetSettingsForm");
-const targetSettingsClose = document.querySelector("#targetSettingsClose");
-const targetSettingsReset = document.querySelector("#targetSettingsReset");
-const targetInputs = document.querySelectorAll("[data-target-input]");
-const targetCloseElements = document.querySelectorAll("[data-target-close]");
-const targetLabels = document.querySelectorAll("[data-target-label]");
 const syncStatus = document.querySelector("#syncStatus");
 const startDateInput = document.querySelector("#startDate");
 const endDateInput = document.querySelector("#endDate");
@@ -369,127 +317,6 @@ function setText(element, value) {
   }
 }
 
-function updateStaticTargetLabels() {
-  targetLabels.forEach((element) => {
-    const key = element.dataset.targetLabel;
-    const value = TARGETS[key] || TARGETS.overall;
-    element.textContent = `Target ≥ ${value}`;
-  });
-
-  setText(gaugeTargetText, `Target ≥ ${TARGETS.overall}`);
-}
-
-function applyTargetToSummary(summary, target) {
-  if (!summary || typeof summary !== "object") {
-    return summary;
-  }
-
-  const average = Number(summary.average || 0);
-  summary.target = target;
-  summary.gap = round1(average - target);
-  summary.status = average >= target ? "ผ่าน Target" : "ต่ำกว่า Target";
-  return summary;
-}
-
-function applyCurrentTargets(payload) {
-  if (!payload || payload.ok === false) {
-    return payload;
-  }
-
-  syncTargetReferences();
-  applyTargetToSummary(payload.overall, TARGETS.overall);
-
-  CATEGORY_CONFIG.forEach((config) => {
-    applyTargetToSummary(payload.categories?.[config.key], config.target);
-  });
-
-  (Array.isArray(payload.shifts) ? payload.shifts : []).forEach((shift) => {
-    applyTargetToSummary(shift, TARGETS.overall);
-    (Array.isArray(shift.affiliations) ? shift.affiliations : []).forEach((affiliation) => {
-      applyTargetToSummary(affiliation, TARGETS.overall);
-    });
-  });
-
-  (Array.isArray(payload.bu) ? payload.bu : []).forEach((bu) => {
-    applyTargetToSummary(bu, TARGETS.overall);
-    (Array.isArray(bu.details) ? bu.details : []).forEach((detail) => {
-      applyTargetToSummary(detail, getPickTypeTarget(detail.key));
-    });
-  });
-
-  (Array.isArray(payload.zones) ? payload.zones : []).forEach((group) => {
-    const groupTarget = getPickTypeTarget(group.key);
-    group.target = groupTarget;
-    (Array.isArray(group.zones) ? group.zones : []).forEach((zone) => {
-      zone.target = groupTarget;
-      applyTargetToSummary(zone, groupTarget);
-    });
-  });
-
-  (Array.isArray(payload.training) ? payload.training : []).forEach((item) => {
-    item.target = TARGETS.training;
-  });
-
-  return payload;
-}
-
-function setTargetFormValues() {
-  targetInputs.forEach((input) => {
-    const key = input.dataset.targetInput;
-    input.value = TARGETS[key] || DEFAULT_TARGETS[key] || TARGETS.overall;
-  });
-}
-
-function getTargetFormValues() {
-  return Array.from(targetInputs).reduce((values, input) => {
-    const key = input.dataset.targetInput;
-    const value = Math.round(Number(input.value));
-
-    if (key && Number.isFinite(value) && value > 0) {
-      values[key] = value;
-    }
-
-    return values;
-  }, {});
-}
-
-function rerenderWithCurrentTargets(sourceLabel = "ปรับ Target แล้ว") {
-  syncTargetReferences();
-  updateStaticTargetLabels();
-  setTargetFormValues();
-
-  if (lastRenderedPayload) {
-    renderDashboard(lastRenderedPayload, { sourceLabel });
-    return;
-  }
-
-  renderDashboardFromLocalCache();
-}
-
-function openTargetSettings() {
-  if (!targetSettingsModal) return;
-  setTargetFormValues();
-  targetSettingsModal.hidden = false;
-  document.body.classList.add("target-modal-open");
-  targetInputs[0]?.focus();
-}
-
-function closeTargetSettings() {
-  if (!targetSettingsModal) return;
-  targetSettingsModal.hidden = true;
-  document.body.classList.remove("target-modal-open");
-}
-
-function updateTargets(nextTargets, sourceLabel) {
-  Object.keys(DEFAULT_TARGETS).forEach((key) => {
-    const value = Number(nextTargets[key]);
-    TARGETS[key] = Number.isFinite(value) && value > 0 ? Math.round(value) : DEFAULT_TARGETS[key];
-  });
-
-  saveTargetsToStorage();
-  rerenderWithCurrentTargets(sourceLabel);
-}
-
 function renderOverallVisual(summary) {
   if (!overallGauge) {
     return;
@@ -503,7 +330,7 @@ function renderOverallVisual(summary) {
   overallGauge.classList.add(info.className);
   setText(gaugeValue, formatNumber(summary.average));
   setText(gaugeBadge, info.label);
-
+  setText(gaugeTargetText, `Target ≥ ${TARGETS.overall}`);
   setText(gaugeInsight, `${info.gapText} จาก ${formatInteger(summary.validCount || 0)} รายการที่นำมาเฉลี่ย`);
 
   if (gaugeBadge) {
@@ -922,10 +749,10 @@ function renderPresentSummary(payload) {
   ];
 
   const risks = [
-    overallAverage < TARGETS.overall ? `Overall ยังต่ำกว่า Target ${TARGETS.overall} อยู่ ${formatNumber(TARGETS.overall - overallAverage)} Pick/Hr` : "Overall ผ่าน Target ภาพรวมแล้ว ให้รักษาระดับและดูจุดย่อยต่อ",
+    overallAverage < TARGETS.overall ? `Overall ยังต่ำกว่า Target 170 อยู่ ${formatNumber(TARGETS.overall - overallAverage)} Pick/Hr` : "Overall ผ่าน Target ภาพรวมแล้ว ให้รักษาระดับและดูจุดย่อยต่อ",
     weakestCategory && weakestCategory.gap < 0 ? `${weakestCategory.label} ต่ำกว่า Target มากสุดในกลุ่ม Rack / EA (${formatNumber(Math.abs(weakestCategory.gap))} Pick/Hr)` : "Rack / EA ไม่มีประเภทหลักที่ต่ำกว่าเป้าในช่วงนี้",
     weakZones.length > 0 ? `Zone ที่ควรดูแรกคือ ${weakZones[0].label} Avg ${formatNumber(weakZones[0].average)} ต่ำกว่า Target ${formatNumber(Math.abs(weakZones[0].gap))}` : "Zone ส่วนใหญ่ไม่มีสัญญาณต่ำกว่าเป้า",
-    trainingSummary.belowTarget > 0 ? `Training ต่ำกว่า Target ${TARGETS.training} จำนวน ${formatInteger(trainingSummary.belowTarget)} คน` : `Training ไม่มีคนที่ต่ำกว่า Target ${TARGETS.training} จากข้อมูลที่มี`,
+    trainingSummary.belowTarget > 0 ? `Training ต่ำกว่า Target 100 จำนวน ${formatInteger(trainingSummary.belowTarget)} คน` : "Training ไม่มีคนที่ต่ำกว่า Target 100 จากข้อมูลที่มี",
   ];
 
   const actions = [
@@ -943,7 +770,6 @@ function renderPresentSummary(payload) {
     button.classList.toggle("active", button.dataset.presentRange === selectedRange);
   });
 }
-
 function renderTrainingSummaryCards(trainingItems) {
   if (!trainingSummaryGrid) return;
 
@@ -954,7 +780,7 @@ function renderTrainingSummaryCards(trainingItems) {
     { label: "Training ทั้งหมด", value: formatInteger(summary.total), note: `${formatInteger(summary.withData)} คนมีข้อมูล`, className: "is-neutral" },
     { label: "ดีขึ้น / ผ่านเป้า", value: `${positiveRate}%`, note: `${formatInteger(positive)} คน`, className: positiveRate >= 60 ? "is-good" : "is-warning" },
     { label: "ลดลง", value: formatInteger(summary.declined), note: "ควรดูรายละเอียดก่อน", className: summary.declined > 0 ? "is-warning" : "is-good" },
-    { label: `ต่ำกว่า Target ${TARGETS.training}`, value: formatInteger(summary.belowTarget), note: "มีข้อมูลแล้วแต่ยังต่ำกว่าเป้า", className: summary.belowTarget > 0 ? "is-danger" : "is-good" },
+    { label: "ต่ำกว่า Target 100", value: formatInteger(summary.belowTarget), note: "มีข้อมูลแล้วแต่ยังต่ำกว่าเป้า", className: summary.belowTarget > 0 ? "is-danger" : "is-good" },
   ];
 
   trainingSummaryGrid.innerHTML = cards.map((card) => `
@@ -975,7 +801,7 @@ function renderTrainingTrendChart(trainingItems) {
     { key: "improved", label: "ดีขึ้น", value: summary.improved, className: "is-good" },
     { key: "onTarget", label: "ผ่านเป้า", value: summary.onTarget, className: "is-good-alt" },
     { key: "declined", label: "ลดลง", value: summary.declined, className: "is-warning" },
-    { key: "belowTarget", label: `ต่ำกว่า Target ${TARGETS.training}`, value: summary.belowTarget, className: "is-danger" },
+    { key: "belowTarget", label: "ต่ำกว่า Target 100", value: summary.belowTarget, className: "is-danger" },
     { key: "notEnough", label: "ข้อมูลยังไม่พอ", value: summary.notEnough, className: "is-empty" },
     { key: "noData", label: "ไม่มีข้อมูล", value: summary.noData, className: "is-muted" },
   ].filter((item) => item.value > 0);
@@ -1256,7 +1082,7 @@ function renderZoneBreakdown(zoneGroups) {
 
   // ── Summary bar ที่ด้านบน (ตัวเลขรวมทุก zone ในกลุ่ม) ──
   const allZones = zoneGroups.flatMap(g => Array.isArray(g.zones) ? g.zones : []);
-  const goodCount = allZones.filter(z => z.average >= (z.target || TARGETS.overall)).length;
+  const goodCount = allZones.filter(z => z.average >= (z.target || 170)).length;
   const warnCount = allZones.length - goodCount;
 
   const summaryBar = document.createElement("div");
@@ -1288,7 +1114,7 @@ function renderZoneBreakdown(zoneGroups) {
     section.className = "zone-section";
 
     const zoneRows = Array.isArray(group.zones) ? group.zones : [];
-    const groupGood = zoneRows.filter(z => z.average >= (z.target || group.target || TARGETS.overall)).length;
+    const groupGood = zoneRows.filter(z => z.average >= (z.target || group.target || 170)).length;
     const groupStatusClass = groupGood === zoneRows.length ? "all-good"
       : groupGood === 0 ? "all-warn" : "partial";
 
@@ -1412,12 +1238,12 @@ function renderTrainingBreakdown(trainingItems) {
           <strong>${formatNumber(item.average)}</strong>
         </div>
         <div class="${isBelowTrainingTarget ? "is-danger-box" : ""}">
-          <span>Target ${target}</span>
+          <span>Target 100</span>
           <strong>${Number(item.count || 0) > 0 ? formatSignedNumber(targetGap) : "-"}</strong>
         </div>
       </div>
 
-      ${isBelowTrainingTarget ? `<div class="training-alert">ต่ำกว่า Target Training ${target} · ควรโฟกัส/ติดตามเพิ่ม</div>` : ""}
+      ${isBelowTrainingTarget ? `<div class="training-alert">⚠ ต่ำกว่า Target Training 100 · ควรโฟกัส/ติดตามเพิ่ม</div>` : ""}
 
       <div class="training-meta">
         <span>${item.startDate || "-"} ถึง ${item.trainingEndDate || "-"}</span>
@@ -2002,12 +1828,11 @@ function getDashboardStatusText(payload, sourceLabel) {
     ? ` | Training ${trainingDebug.trainingMatchedCount || 0}/${trainingDebug.trainingUserCount || 0}`
     : "";
 
-  const targetText = ` | Target ${TARGETS.overall}/${TARGETS.fullRack}/${TARGETS.halfRack}/${TARGETS.ea}/T${TARGETS.training}`;
-  return `${sourceLabel} ${generatedAt}${elapsed}${age}${rangeText}${noMatchText}${trainingText}${targetText}`;
+  return `${sourceLabel} ${generatedAt}${elapsed}${age}${rangeText}${noMatchText}${trainingText}`;
 }
 
 function renderDashboard(rawPayload, options = {}) {
-  const payload = applyCurrentTargets(normalizeDashboardPayload(rawPayload));
+  const payload = normalizeDashboardPayload(rawPayload);
 
   if (!payload || payload.ok === false) {
     throw new Error(payload?.error || "โหลด Dashboard ไม่สำเร็จ");
@@ -2017,8 +1842,6 @@ function renderDashboard(rawPayload, options = {}) {
     throw new Error("รูปแบบข้อมูล Dashboard ไม่ตรงกับหน้าเว็บ");
   }
 
-  lastRenderedPayload = payload;
-  updateStaticTargetLabels();
   renderOverall(payload.overall || {});
   renderSnapshotOverview(payload);
   renderPresentSummary(payload);
@@ -2234,40 +2057,11 @@ function setQuickRange(range) {
   endDateInput.value = end;
 
 
-  quickFilterButtons.forEach((button) => {
+quickFilterButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.range === selectedRange);
   });
 
   loadSelectedRange();
-}
-
-function initializeTargetSettings() {
-  updateStaticTargetLabels();
-  setTargetFormValues();
-
-  targetSettingsButton?.addEventListener("click", openTargetSettings);
-  targetSettingsClose?.addEventListener("click", closeTargetSettings);
-  targetCloseElements.forEach((element) => {
-    element.addEventListener("click", closeTargetSettings);
-  });
-
-  targetSettingsForm?.addEventListener("submit", (event) => {
-    event.preventDefault();
-    updateTargets({ ...TARGETS, ...getTargetFormValues() }, "ปรับ Target แล้ว");
-    closeTargetSettings();
-    setSyncStatus("บันทึก Target ใหม่แล้ว");
-  });
-
-  targetSettingsReset?.addEventListener("click", () => {
-    updateTargets(DEFAULT_TARGETS, "กลับค่า Target เริ่มต้น");
-    setSyncStatus("กลับค่า Target เริ่มต้นแล้ว");
-  });
-
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && targetSettingsModal && !targetSettingsModal.hidden) {
-      closeTargetSettings();
-    }
-  });
 }
 
 presentRangeButtons.forEach((button) => {
@@ -2309,7 +2103,6 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // v35: ไม่โหลด Daily Index ตอนเปิดเว็บ เพื่อลดเวลารอและลดโอกาส Apps Script timeout
-initializeTargetSettings();
 dailyIndexPayload = null;
 const showedInitialCache = renderDashboardFromLocalCache();
 loadDashboard({ silent: showedInitialCache });

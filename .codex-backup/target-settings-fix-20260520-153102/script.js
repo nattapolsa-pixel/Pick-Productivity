@@ -2,7 +2,7 @@ const RESULTS_API_URL = "https://script.google.com/macros/s/AKfycbyby7nOGMZe-w8p
 const REFRESH_INTERVAL_MS = 60 * 1000;
 const REQUEST_TIMEOUT_MS = 45000;
 const DAILY_INDEX_TIMEOUT_MS = 45000;
-const DASHBOARD_CACHE_PREFIX = "pickProductivityDashboardCache:v37-target-settings";
+const DASHBOARD_CACHE_PREFIX = "pickProductivityDashboardCache:v36-training-target-100";
 const TARGET_STORAGE_KEY = "pickProductivityTargets:v1";
 
 const DEFAULT_TARGETS = Object.freeze({
@@ -503,7 +503,7 @@ function renderOverallVisual(summary) {
   overallGauge.classList.add(info.className);
   setText(gaugeValue, formatNumber(summary.average));
   setText(gaugeBadge, info.label);
-
+  
   setText(gaugeInsight, `${info.gapText} จาก ${formatInteger(summary.validCount || 0)} รายการที่นำมาเฉลี่ย`);
 
   if (gaugeBadge) {
@@ -939,11 +939,39 @@ function renderPresentSummary(payload) {
   renderPresentList(presentRisks, risks, "ยังไม่มีความเสี่ยงสำคัญจากข้อมูลช่วงนี้");
   renderPresentList(presentActions, actions, "ยังไม่มีข้อเสนอเพิ่มเติม");
 
-  presentRangeButtons.forEach((button) => {
-    button.classList.toggle("active", button.dataset.presentRange === selectedRange);
+  function initializeTargetSettings() {
+  updateStaticTargetLabels();
+  setTargetFormValues();
+
+  targetSettingsButton?.addEventListener("click", openTargetSettings);
+  targetSettingsClose?.addEventListener("click", closeTargetSettings);
+  targetCloseElements.forEach((element) => {
+    element.addEventListener("click", closeTargetSettings);
+  });
+
+  targetSettingsForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    updateTargets({ ...TARGETS, ...getTargetFormValues() }, "ปรับ Target แล้ว");
+    closeTargetSettings();
+    setSyncStatus("บันทึก Target ใหม่แล้ว");
+  });
+
+  targetSettingsReset?.addEventListener("click", () => {
+    updateTargets(DEFAULT_TARGETS, "กลับค่า Target เริ่มต้น");
+    setSyncStatus("กลับค่า Target เริ่มต้นแล้ว");
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && targetSettingsModal && !targetSettingsModal.hidden) {
+      closeTargetSettings();
+    }
   });
 }
 
+presentRangeButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.presentRange === selectedRange);
+  });
+}
 function renderTrainingSummaryCards(trainingItems) {
   if (!trainingSummaryGrid) return;
 
@@ -1256,7 +1284,7 @@ function renderZoneBreakdown(zoneGroups) {
 
   // ── Summary bar ที่ด้านบน (ตัวเลขรวมทุก zone ในกลุ่ม) ──
   const allZones = zoneGroups.flatMap(g => Array.isArray(g.zones) ? g.zones : []);
-  const goodCount = allZones.filter(z => z.average >= (z.target || TARGETS.overall)).length;
+  const goodCount = allZones.filter(z => z.average >= (z.target || 170)).length;
   const warnCount = allZones.length - goodCount;
 
   const summaryBar = document.createElement("div");
@@ -1288,7 +1316,7 @@ function renderZoneBreakdown(zoneGroups) {
     section.className = "zone-section";
 
     const zoneRows = Array.isArray(group.zones) ? group.zones : [];
-    const groupGood = zoneRows.filter(z => z.average >= (z.target || group.target || TARGETS.overall)).length;
+    const groupGood = zoneRows.filter(z => z.average >= (z.target || group.target || 170)).length;
     const groupStatusClass = groupGood === zoneRows.length ? "all-good"
       : groupGood === 0 ? "all-warn" : "partial";
 
@@ -2017,7 +2045,6 @@ function renderDashboard(rawPayload, options = {}) {
     throw new Error("รูปแบบข้อมูล Dashboard ไม่ตรงกับหน้าเว็บ");
   }
 
-  lastRenderedPayload = payload;
   updateStaticTargetLabels();
   renderOverall(payload.overall || {});
   renderSnapshotOverview(payload);
@@ -2234,40 +2261,11 @@ function setQuickRange(range) {
   endDateInput.value = end;
 
 
-  quickFilterButtons.forEach((button) => {
+quickFilterButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.range === selectedRange);
   });
 
   loadSelectedRange();
-}
-
-function initializeTargetSettings() {
-  updateStaticTargetLabels();
-  setTargetFormValues();
-
-  targetSettingsButton?.addEventListener("click", openTargetSettings);
-  targetSettingsClose?.addEventListener("click", closeTargetSettings);
-  targetCloseElements.forEach((element) => {
-    element.addEventListener("click", closeTargetSettings);
-  });
-
-  targetSettingsForm?.addEventListener("submit", (event) => {
-    event.preventDefault();
-    updateTargets({ ...TARGETS, ...getTargetFormValues() }, "ปรับ Target แล้ว");
-    closeTargetSettings();
-    setSyncStatus("บันทึก Target ใหม่แล้ว");
-  });
-
-  targetSettingsReset?.addEventListener("click", () => {
-    updateTargets(DEFAULT_TARGETS, "กลับค่า Target เริ่มต้น");
-    setSyncStatus("กลับค่า Target เริ่มต้นแล้ว");
-  });
-
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && targetSettingsModal && !targetSettingsModal.hidden) {
-      closeTargetSettings();
-    }
-  });
 }
 
 presentRangeButtons.forEach((button) => {
@@ -2309,7 +2307,6 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // v35: ไม่โหลด Daily Index ตอนเปิดเว็บ เพื่อลดเวลารอและลดโอกาส Apps Script timeout
-initializeTargetSettings();
 dailyIndexPayload = null;
 const showedInitialCache = renderDashboardFromLocalCache();
 loadDashboard({ silent: showedInitialCache });
