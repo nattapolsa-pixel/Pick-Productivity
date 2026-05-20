@@ -183,6 +183,125 @@ let isLoading = false;
 let dailyIndexPayload = null;
 let isDailyIndexLoading = false;
 
+// ---- Loading modal / progress helpers ----
+const loadingModal = document.querySelector("#loadingModal");
+const loadingProgressFill = document.querySelector("#loadingProgressFill");
+const loadingPercent = document.querySelector("#loadingPercent");
+const loadingEstimate = document.querySelector("#loadingEstimate");
+const loadingClose = document.querySelector("#loadingClose");
+let _loadingInterval = null;
+let _loadingStartTs = 0;
+let _loadingEstimatedMs = 8000;
+
+// track current network request so it can be aborted
+let currentRequest = null;
+
+function abortCurrentRequest() {
+  try {
+    if (!currentRequest) return;
+    if (currentRequest.type === "fetch" && currentRequest.controller) {
+      currentRequest.controller.abort();
+    }
+    if (currentRequest.type === "jsonp") {
+      // call stored reject and cleanup
+      try {
+        currentRequest.reject && currentRequest.reject(new Error("ยกเลิกการโหลดโดยผู้ใช้"));
+      } catch (e) {}
+      try { currentRequest.cleanup && currentRequest.cleanup(); } catch (e) {}
+    }
+  } finally {
+    currentRequest = null;
+    setSyncStatus("ยกเลิกการโหลด");
+    hideLoadingModal();
+  }
+}
+
+function setLoadingProgress(percent) {
+  const p = Math.max(0, Math.min(100, Math.round(percent)));
+  if (loadingProgressFill) loadingProgressFill.style.width = `${p}%`;
+  if (loadingPercent) loadingPercent.textContent = `${p}%`;
+}
+
+function showLoadingModal(estimatedMs = 8000) {
+  if (!loadingModal) return;
+  _loadingEstimatedMs = Number(estimatedMs) || 8000;
+  _loadingStartTs = Date.now();
+  loadingModal.hidden = false;
+  document.body.classList.add("loading-open");
+  setLoadingProgress(0);
+
+  // show skeleton placeholders to improve perceived speed
+  try { showSkeletons(); } catch (e) {}
+
+  if (_loadingInterval) clearInterval(_loadingInterval);
+  _loadingInterval = setInterval(() => {
+    const elapsed = Date.now() - _loadingStartTs;
+    const pct = Math.min(99, (elapsed / _loadingEstimatedMs) * 100);
+    setLoadingProgress(pct);
+    const remain = Math.max(0, Math.round((_loadingEstimatedMs - elapsed) / 1000));
+    if (loadingEstimate) loadingEstimate.textContent = remain > 0 ? `คาดว่าเสร็จภายใน ~${remain} วินาที` : "กำลังประมวลผล...";
+  }, 250);
+}
+
+function hideLoadingModal() {
+  if (!loadingModal) return;
+  if (_loadingInterval) { clearInterval(_loadingInterval); _loadingInterval = null; }
+  setLoadingProgress(100);
+  setTimeout(() => {
+    loadingModal.hidden = true;
+    document.body.classList.remove("loading-open");
+    setLoadingProgress(0);
+    if (loadingEstimate) loadingEstimate.textContent = "";
+    try { clearSkeletons(); } catch (e) {}
+  }, 450);
+}
+
+if (loadingClose) {
+  loadingClose.addEventListener("click", () => {
+    // user-requested close -> abort network work
+    abortCurrentRequest();
+  });
+}
+
+// Skeleton helpers
+function showSkeletons() {
+  try {
+    if (snapshotGrid && snapshotGrid.children.length === 0) {
+      snapshotGrid.innerHTML = Array.from({ length: 4 }).map(() => `
+        <article class="snapshot-card is-empty skeleton-card">
+          <span class="skeleton-line" style="width:40%"></span>
+          <strong class="skeleton-line" style="width:60%"></strong>
+          <small class="skeleton-line" style="width:80%"></small>
+        </article>
+      `).join("");
+    }
+
+    const fillIfEmpty = (el, template, count = 3) => {
+      if (!el) return;
+      if (el.children.length === 0) {
+        el.innerHTML = Array.from({ length: count }).map(() => template).join("");
+      }
+    };
+
+    fillIfEmpty(categoryGrid, `<div class="category-card skeleton-card"><h3 class="skeleton-line" style="width:50%"></h3><div class="category-value skeleton-line" style="width:60%"></div></div>`, 3);
+    fillIfEmpty(shiftGrid, `<div class="shift-card skeleton-card"><h3 class="skeleton-line" style="width:40%"></h3><div class="shift-value skeleton-line" style="width:50%"></div></div>`, 3);
+    fillIfEmpty(trainingGrid, `<div class="training-card skeleton-card"><h3 class="skeleton-line" style="width:50%"></h3><div class="training-value skeleton-line" style="width:60%"></div></div>`, 3);
+    fillIfEmpty(buGrid, `<div class="bu-card skeleton-card"><h3 class="skeleton-line" style="width:50%"></h3><div class="bu-value skeleton-line" style="width:60%"></div></div>`, 2);
+    fillIfEmpty(zoneBreakdownGrid, `<div class="zone-card skeleton-card"><h3 class="skeleton-line" style="width:50%"></h3><div class="zone-card-num skeleton-line" style="width:40%"></div></div>`, 3);
+  } catch (e) { console.warn(e); }
+}
+
+function clearSkeletons() {
+  try {
+    [snapshotGrid, categoryGrid, shiftGrid, trainingGrid, buGrid, zoneBreakdownGrid].forEach((el) => {
+      if (!el) return;
+      // if it contains skeleton-card items, clear so render functions can populate
+      const hasSkeleton = Array.from(el.children).some(c => c.classList && c.classList.contains('skeleton-card'));
+      if (hasSkeleton) el.textContent = '';
+    });
+  } catch (e) { console.warn(e); }
+}
+
 function toDdMmYyyyFromInput(value) {
   const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
 
@@ -2018,25 +2137,41 @@ function renderDashboard(rawPayload, options = {}) {
   }
 
   lastRenderedPayload = payload;
+
+  // Fast path: render critical UI immediately for perceived speed
   updateStaticTargetLabels();
   renderOverall(payload.overall || {});
   renderSnapshotOverview(payload);
   renderPresentSummary(payload);
-  renderVisualOverview(payload);
-  renderCategoryCards(payload.categories || {});
-  renderShiftBreakdown(payload.shifts || []);
-  renderBuBreakdown(payload.bu || []);
-  renderTrainingBreakdown(payload.training || []);
 
-  if (payload.trainingDebug) {
-    console.log("TRAINING DEBUG", payload.trainingDebug);
-  }
-
-  renderZoneBreakdown(payload.zones || []);
-
+  // Update sync status right away
   if (options.updateStatus !== false) {
     const sourceLabel = options.sourceLabel || getCacheLabel(payload);
     setSyncStatus(getDashboardStatusText(payload, sourceLabel));
+  }
+
+  // Hide loading modal early so user sees content right away
+  try { hideLoadingModal(); } catch (e) {}
+
+  // Defer heavier renders to idle time so initial paint is fast
+  const doDeferred = () => {
+    try { renderVisualOverview(payload); } catch (e) { console.warn(e); }
+    try { renderCategoryCards(payload.categories || {}); } catch (e) { console.warn(e); }
+    try { renderShiftBreakdown(payload.shifts || []); } catch (e) { console.warn(e); }
+    try { renderBuBreakdown(payload.bu || []); } catch (e) { console.warn(e); }
+    try { renderTrainingBreakdown(payload.training || []); } catch (e) { console.warn(e); }
+    try { renderZoneBreakdown(payload.zones || []); } catch (e) { console.warn(e); }
+    if (payload.trainingDebug) console.log("TRAINING DEBUG", payload.trainingDebug);
+  };
+
+  if ('requestIdleCallback' in window) {
+    try {
+      requestIdleCallback(doDeferred, { timeout: 700 });
+    } catch (e) {
+      setTimeout(doDeferred, 60);
+    }
+  } else {
+    setTimeout(doDeferred, 60);
   }
 
   return payload;
@@ -2071,6 +2206,8 @@ function saveDashboardToLocalCache(payload) {
 async function fetchJsonWithTimeout(url, timeoutMs) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  // register current request so it can be aborted externally
+  currentRequest = { type: 'fetch', controller };
 
   try {
     const response = await fetch(url, {
@@ -2085,6 +2222,7 @@ async function fetchJsonWithTimeout(url, timeoutMs) {
     return response.json();
   } finally {
     clearTimeout(timeoutId);
+    currentRequest = null;
   }
 }
 
@@ -2096,22 +2234,25 @@ function fetchJsonpDashboard(options = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
 
     function cleanup() {
       clearTimeout(timeoutId);
-      delete window[callbackName];
-      script.remove();
+      try { delete window[callbackName]; } catch (e) {}
+      try { script.remove(); } catch (e) {}
     }
 
     window[callbackName] = (payload) => {
       cleanup();
+      currentRequest = null;
       resolve(payload);
     };
 
     script.onerror = () => {
       cleanup();
+      currentRequest = null;
       reject(new Error("JSONP load failed"));
     };
 
     timeoutId = setTimeout(() => {
       cleanup();
+      currentRequest = null;
       reject(new Error("JSONP request timed out"));
     }, timeoutMs);
 
@@ -2120,6 +2261,15 @@ function fetchJsonpDashboard(options = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
       callback: callbackName,
     });
     document.head.appendChild(script);
+
+    // register currentRequest so it can be aborted
+    currentRequest = {
+      type: 'jsonp',
+      cleanup: cleanup,
+      reject: reject,
+      callbackName,
+      script,
+    };
   });
 }
 
@@ -2153,6 +2303,16 @@ async function loadDashboard(options = {}) {
 
   isLoading = true;
 
+  // show loading modal with an estimate (use timeout as upper bound) only when not silent
+  try {
+    if (!silent) {
+      const estimateMs = force ? Math.min(REQUEST_TIMEOUT_MS, 20000) : Math.min(REQUEST_TIMEOUT_MS, 8000);
+      showLoadingModal(estimateMs);
+    }
+  } catch (e) {
+    // ignore
+  }
+
   if (refreshButton && (!silent || force)) {
     refreshButton.disabled = true;
     refreshButton.textContent = force ? "คำนวณสด..." : "กำลังรีเฟรช...";
@@ -2166,8 +2326,15 @@ async function loadDashboard(options = {}) {
     const payload = await fetchDashboardPayload({ force });
     const normalizedPayload = renderDashboard(payload);
     saveDashboardToLocalCache(normalizedPayload);
+
+    // complete progress and hide
+    try { setLoadingProgress(100); } catch (e) {}
+    await new Promise((r) => setTimeout(r, 500));
+    try { hideLoadingModal(); } catch (e) {}
   } catch (error) {
     console.error(error);
+
+    try { hideLoadingModal(); } catch (e) {}
 
     if (!renderDashboardFromLocalCache()) {
       setSyncStatus(`โหลดข้อมูลไม่สำเร็จ: ${error.message}`);
@@ -2179,6 +2346,8 @@ async function loadDashboard(options = {}) {
       refreshButton.disabled = false;
       refreshButton.textContent = "รีเฟรช";
     }
+
+    try { hideLoadingModal(); } catch (e) {}
   }
 }
 

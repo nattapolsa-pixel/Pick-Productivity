@@ -412,6 +412,25 @@
 
     </main>
   </div>
+  <div class="loading-modal" id="loadingModal" hidden>
+    <div class="loading-modal-backdrop" data-loading-close></div>
+    <section class="loading-dialog" role="dialog" aria-modal="true" aria-labelledby="loadingTitle">
+      <div class="loading-head">
+        <h2 id="loadingTitle">กำลังโหลดข้อมูล</h2>
+        <button id="loadingClose" class="loading-close" type="button" aria-label="ปิดหน้าต่าง">×</button>
+      </div>
+
+      <div class="loading-body">
+        <div class="loading-progress-bar" aria-hidden="true">
+          <div class="loading-progress-fill" id="loadingProgressFill" style="width:0%"></div>
+        </div>
+        <div class="loading-meta">
+          <span id="loadingPercent">0%</span>
+          <small id="loadingEstimate">คาดว่าเสร็จภายใน ~8 วินาที</small>
+        </div>
+      </div>
+    </section>
+  </div>
 
 
   <div class="target-modal" id="targetSettingsModal" hidden>
