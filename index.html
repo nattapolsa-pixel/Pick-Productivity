@@ -4,118 +4,404 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pick Productivity Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://script.google.com">
+  <link rel="preconnect" href="https://script.googleusercontent.com">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <main class="app-shell">
-    <section class="hero-card">
-      <div class="hero-copy">
-        <p class="eyebrow">Pick Productivity Dashboard</p>
-        <h1>Picking Productivity - Overall (หยิบ)</h1>
-        <p class="intro">Dashboard นี้ใช้ค่า Average Pick/Hr จาก Results Master Column AF เท่านั้น และตัดค่า 0 ออกจากการเฉลี่ยอัตโนมัติ</p>
-      </div>
-      <div class="hero-actions">
-        <button id="refreshButton" type="button">รีเฟรชข้อมูล</button>
-        <span id="syncStatus" class="sync-status">กำลังโหลดข้อมูล...</span>
-      </div>
-    </section>
+  <div class="dashboard-ambient" aria-hidden="true">
+    <span class="ambient-line ambient-line-a"></span>
+    <span class="ambient-line ambient-line-b"></span>
+    <span class="ambient-scan"></span>
+  </div>
 
-    <section class="filter-card" aria-label="ตัวกรองข้อมูล">
+
+  <!-- ===== TOP BAR ===== -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-logo">
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+          <rect width="28" height="28" rx="6" fill="#1A6CF6"/>
+          <rect x="5" y="8" width="4" height="12" rx="1" fill="white"/>
+          <rect x="12" y="5" width="4" height="18" rx="1" fill="white" opacity="0.7"/>
+          <rect x="19" y="11" width="4" height="9" rx="1" fill="white" opacity="0.5"/>
+        </svg>
+        <span class="topbar-title">Pick Productivity</span>
+        <span class="topbar-tag">DASHBOARD</span>
+        <span class="topbar-signal" aria-hidden="true"><i></i></span>
+      </div>
+    </div>
+    <div class="topbar-center">
       <div class="quick-filters">
         <button class="chip active" type="button" data-range="all">ทั้งหมด</button>
         <button class="chip" type="button" data-range="today">วันนี้</button>
         <button class="chip" type="button" data-range="week">สัปดาห์นี้</button>
         <button class="chip" type="button" data-range="month">เดือนนี้</button>
       </div>
-      <div class="date-filters">
-        <label>
-          วันที่เริ่มต้น
-          <input id="startDate" type="date">
-        </label>
-        <label>
-          วันที่สิ้นสุด
-          <input id="endDate" type="date">
-        </label>
-        <button id="applyDateButton" class="secondary" type="button">ใช้ Filter</button>
+    </div>
+    <div class="topbar-right">
+      <div class="date-filter-row">
+        <input id="startDate" type="date" class="date-input" placeholder="วันเริ่มต้น">
+        <span class="date-sep">—</span>
+        <input id="endDate" type="date" class="date-input" placeholder="วันสิ้นสุด">
+        <button id="applyDateButton" class="btn-apply" type="button">ใช้</button>
       </div>
-    </section>
+      <button id="refreshButton" class="btn-refresh" type="button">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M13 7A6 6 0 1 1 7 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M7 1l2 2-2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        รีเฟรช
+      </button>
+      <span id="syncStatus" class="sync-badge">กำลังโหลด...</span>
+    </div>
+  </header>
 
-    <section class="summary-grid" aria-label="KPI Summary">
-      <article class="kpi-card main-kpi" id="overallCard">
-        <div class="kpi-topline">
-          <span>Overall Avg Pick/Hr</span>
-          <strong id="overallStatus">-</strong>
+  <!-- ===== MAIN LAYOUT ===== -->
+  <div class="app-layout">
+
+    <!-- ===== SIDEBAR TAB NAV ===== -->
+    <nav class="sidebar">
+      <div class="sidebar-kpi-mini">
+        <div class="sidebar-kpi-label">Overall Avg Pick/Hr</div>
+        <div class="sidebar-kpi-value" id="sidebarOverall">—</div>
+        <div class="sidebar-kpi-target">Target ≥ 170</div>
+        <div class="sidebar-progress-track">
+          <div class="sidebar-progress-fill" id="sidebarProgress"></div>
         </div>
-        <div class="kpi-value" id="overallAverage">-</div>
-        <div class="target-row">
-          <span>Target ≥ 170</span>
-          <span id="overallGap">-</span>
+        <div class="sidebar-kpi-status" id="sidebarStatus">—</div>
+      </div>
+
+      <ul class="nav-list">
+        <li><button class="nav-item active" data-tab="overview">
+          <span class="nav-icon">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <rect x="1" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".8"/>
+              <rect x="9" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".5"/>
+              <rect x="1" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".5"/>
+              <rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".3"/>
+            </svg>
+          </span>
+          <span class="nav-label">Overview</span>
+        </button></li>
+        <li><button class="nav-item" data-tab="rack">
+          <span class="nav-icon">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <rect x="1" y="3" width="14" height="2.5" rx="1" fill="currentColor" opacity=".8"/>
+              <rect x="1" y="7" width="14" height="2.5" rx="1" fill="currentColor" opacity=".5"/>
+              <rect x="1" y="11" width="14" height="2.5" rx="1" fill="currentColor" opacity=".3"/>
+            </svg>
+          </span>
+          <span class="nav-label">Rack / EA</span>
+        </button></li>
+        <li><button class="nav-item" data-tab="shift">
+          <span class="nav-icon">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5" opacity=".7"/>
+              <path d="M8 4.5V8l3 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span class="nav-label">Shift</span>
+        </button></li>
+        <li><button class="nav-item" data-tab="training">
+          <span class="nav-icon">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M2 12l3-4 3 2 3-5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/>
+            </svg>
+          </span>
+          <span class="nav-label">Training</span>
+        </button></li>
+        <li><button class="nav-item" data-tab="bu">
+          <span class="nav-icon">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <rect x="2" y="8" width="4" height="6" rx="1" fill="currentColor" opacity=".8"/>
+              <rect x="7" y="4" width="4" height="10" rx="1" fill="currentColor" opacity=".5"/>
+              <rect x="12" y="1" width="2" height="13" rx="1" fill="currentColor" opacity=".3"/>
+            </svg>
+          </span>
+          <span class="nav-label">BU</span>
+        </button></li>
+        <li><button class="nav-item" data-tab="zone">
+          <span class="nav-icon">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M8 2C5.24 2 3 4.24 3 7c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5z" stroke="currentColor" stroke-width="1.5" opacity=".8"/>
+              <circle cx="8" cy="7" r="1.5" fill="currentColor"/>
+            </svg>
+          </span>
+          <span class="nav-label">Zone</span>
+        </button></li>
+        <li><button class="nav-item" data-tab="chart">
+          <span class="nav-icon">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <rect x="1" y="10" width="3" height="4" rx="1" fill="currentColor" opacity=".5"/>
+              <rect x="5.5" y="6" width="3" height="8" rx="1" fill="currentColor" opacity=".7"/>
+              <rect x="10" y="2" width="3" height="12" rx="1" fill="currentColor" opacity=".9"/>
+              <line x1="1" y1="14.5" x2="14" y2="14.5" stroke="currentColor" stroke-width="1" opacity=".4"/>
+            </svg>
+          </span>
+          <span class="nav-label">Target Chart</span>
+        </button></li>
+      </ul>
+
+      <div class="warehouse-mascot" aria-hidden="true">
+        <div class="mascot-signal"><span></span><span></span><span></span></div>
+        <div class="mascot-helmet"></div>
+        <div class="mascot-head"><i></i><i></i></div>
+        <div class="mascot-body">
+          <span class="mascot-badge"></span>
         </div>
-        <div class="progress-track"><div id="overallProgress" class="progress-fill"></div></div>
-      </article>
-
-      <article class="kpi-card soft">
-        <span class="card-label">รายการที่นำมาเฉลี่ย</span>
-        <strong id="validRows">-</strong>
-        <small>ตัดค่า 0 / ค่าว่าง / ไม่ใช่ตัวเลขออกแล้ว</small>
-      </article>
-
-      <article class="kpi-card soft">
-        <span class="card-label">รายการทั้งหมดในช่วงที่เลือก</span>
-        <strong id="totalRows">-</strong>
-        <small id="excludedRows">-</small>
-      </article>
-    </section>
-
-    <section class="section-header">
-      <div>
-        <p class="eyebrow">Breakdown</p>
-        <h2>Picking Productivity แยกตามประเภท Rack / EA</h2>
+        <div class="mascot-box"></div>
+        <div class="mascot-shadow"></div>
       </div>
-      <p class="hint">Main KPI: Full Rack 37% / Half Rack 48% / EA 15%</p>
-    </section>
+      <div class="sidebar-footer">
+        <div class="sidebar-note">ค่าจาก Column AF</div>
+        <div class="sidebar-note">ตัดค่า 0 ออกอัตโนมัติ</div>
+      </div>
+    </nav>
 
-    <section class="category-grid" id="categoryGrid" aria-label="Category KPI"></section>
+    <!-- ===== CONTENT AREA ===== -->
+    <main class="content-area">
 
-    <section class="chart-card">
-      <div class="chart-head">
-        <div>
-          <p class="eyebrow">Average by Type</p>
-          <h2>เทียบค่าเฉลี่ยกับ Target</h2>
+      <!-- TAB: OVERVIEW -->
+      <section class="tab-panel active" id="tab-overview">
+        <div class="panel-header">
+          <div>
+            <p class="panel-eyebrow">OVERVIEW</p>
+            <h1 class="panel-title">Picking Productivity — ภาพรวม</h1>
+          </div>
+          <p class="panel-desc">ใช้ค่า Average Pick/Hr จาก Column AF เท่านั้น ตัดค่า 0 / ค่าว่าง ออกจากการเฉลี่ย</p>
         </div>
-        <span id="chartNote" class="sync-status">-</span>
-      </div>
-      <div id="barChart" class="bar-chart" aria-label="กราฟ KPI"></div>
-    </section>
 
-    <section class="table-card">
-      <div class="chart-head">
-        <div>
-          <p class="eyebrow">Data Quality</p>
-          <h2>ตัวอย่างข้อมูลที่ถูกตัดออกจาก Average</h2>
+        <div class="snapshot-grid" id="snapshotGrid" aria-label="Quick dashboard snapshot"></div>
+
+        <!-- KPI TRIO -->
+        <div class="kpi-trio">
+          <article class="kpi-main" id="overallCard">
+            <div class="kpi-main-head">
+              <span class="kpi-main-label">Overall Avg Pick/Hr</span>
+              <span class="kpi-badge" id="overallStatus">—</span>
+            </div>
+            <div class="kpi-main-number" id="overallAverage">—</div>
+            <div class="kpi-main-sub">
+              <span>Target ≥ 170</span>
+              <span id="overallGap">—</span>
+            </div>
+            <div class="progress-track"><div id="overallProgress" class="progress-fill"></div></div>
+          </article>
+
+          <article class="kpi-stat">
+            <div class="kpi-stat-icon">✓</div>
+            <div class="kpi-stat-body">
+              <div class="kpi-stat-label">รายการที่นำมาเฉลี่ย</div>
+              <div class="kpi-stat-value" id="validRows">—</div>
+              <div class="kpi-stat-note">ตัดค่า 0 / ว่าง / ไม่ใช่ตัวเลขออกแล้ว</div>
+            </div>
+          </article>
+
+          <article class="kpi-stat">
+            <div class="kpi-stat-icon">#</div>
+            <div class="kpi-stat-body">
+              <div class="kpi-stat-label">รายการทั้งหมดในช่วงที่เลือก</div>
+              <div class="kpi-stat-value" id="totalRows">—</div>
+              <div class="kpi-stat-note" id="excludedRows">—</div>
+            </div>
+          </article>
         </div>
-        <span class="hint">ค่า AF เป็น 0 / ว่าง / อ่านไม่ได้</span>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>วันที่</th>
-              <th>Name</th>
-              <th>User ID</th>
-              <th>Total pick</th>
-              <th>Average Pick/Hr (AF)</th>
-              <th>เหตุผล</th>
-            </tr>
-          </thead>
-          <tbody id="excludedTableBody">
-            <tr><td colspan="6">กำลังโหลดข้อมูล...</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-  </main>
+
+        <!-- VISUAL TRIO -->
+        <div class="visual-trio">
+          <!-- GAUGE -->
+          <article class="visual-card gauge-card">
+            <div class="visual-card-head">
+              <div>
+                <p class="visual-card-eyebrow">LIVE SCORE</p>
+                <h2 class="visual-card-title">Overall Performance</h2>
+              </div>
+              <span id="gaugeBadge" class="status-pill">—</span>
+            </div>
+            <div class="gauge-wrap">
+              <div class="gauge-ring" id="overallGauge" style="--score-angle: 0deg;">
+                <span id="gaugeValue">—</span>
+                <small>Avg Pick/Hr</small>
+              </div>
+              <div class="gauge-copy">
+                <strong id="gaugeTargetText">Target ≥ 170</strong>
+                <span id="gaugeInsight">กำลังโหลด...</span>
+              </div>
+            </div>
+          </article>
+
+          <!-- RACK MINI -->
+          <article class="visual-card">
+            <div class="visual-card-head">
+              <div>
+                <p class="visual-card-eyebrow">RACK / EA</p>
+                <h2 class="visual-card-title">เทียบ Target ตามประเภท</h2>
+              </div>
+              <span class="status-pill muted">AF</span>
+            </div>
+            <div id="categoryMiniChart" class="mini-chart"></div>
+          </article>
+
+          <!-- SHIFT MINI -->
+          <article class="visual-card">
+            <div class="visual-card-head">
+              <div>
+                <p class="visual-card-eyebrow">SHIFT VIEW</p>
+                <h2 class="visual-card-title">กะที่ควรโฟกัส</h2>
+              </div>
+              <span class="status-pill muted">AG / AI</span>
+            </div>
+            <div id="shiftMiniChart" class="mini-chart"></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- TAB: RACK -->
+      <section class="tab-panel" id="tab-rack">
+        <div class="panel-header">
+          <div>
+            <p class="panel-eyebrow">BREAKDOWN</p>
+            <h1 class="panel-title">Rack / EA Breakdown</h1>
+          </div>
+          <p class="panel-desc">Main KPI: Full Rack 37% / Half Rack 48% / EA 15%</p>
+        </div>
+        <div class="category-grid" id="categoryGrid" aria-label="Category KPI"></div>
+      </section>
+
+      <!-- TAB: SHIFT -->
+      <section class="tab-panel" id="tab-shift">
+        <div class="panel-header">
+          <div>
+            <p class="panel-eyebrow">SHIFT BREAKDOWN</p>
+            <h1 class="panel-title">Productivity แยกตามกะ</h1>
+          </div>
+          <p class="panel-desc">แตกสังกัดจาก Column AI · ใช้ค่า Average Pick/Hr จาก Column AF</p>
+        </div>
+        <div class="shift-grid" id="shiftGrid" aria-label="Shift KPI"></div>
+      </section>
+
+      <!-- TAB: TRAINING -->
+      <section class="tab-panel" id="tab-training">
+        <div class="panel-header">
+          <div>
+            <p class="panel-eyebrow">TRAINING DEEP DIVE</p>
+            <h1 class="panel-title">Productivity Training</h1>
+          </div>
+          <p class="panel-desc">วันเริ่มงานถึง 2 เดือน · Column D = Update name Column B · วันที่เริ่ม H / วันสิ้นสุด M</p>
+        </div>
+        <div class="training-summary-grid" id="trainingSummaryGrid" aria-label="Training summary"></div>
+
+        <div class="training-insight-layout">
+          <article class="training-insight-card">
+            <div class="training-insight-head">
+              <div>
+                <p class="visual-card-eyebrow">TREND SUMMARY</p>
+                <h2 class="visual-card-title">ภาพรวมผล Training</h2>
+              </div>
+              <span class="status-pill muted">H → M</span>
+            </div>
+            <div class="training-stack" id="trainingTrendChart"></div>
+          </article>
+
+          <article class="training-insight-card">
+            <div class="training-insight-head">
+              <div>
+                <p class="visual-card-eyebrow">FOCUS LIST</p>
+                <h2 class="visual-card-title">คนที่ควรดูต่อก่อน</h2>
+              </div>
+              <span class="status-pill muted">Top 6</span>
+            </div>
+            <div class="training-focus-list" id="trainingFocusList"></div>
+          </article>
+        </div>
+
+        <div class="training-grid" id="trainingGrid" aria-label="Training Productivity"></div>
+      </section>
+
+      <!-- TAB: BU -->
+      <section class="tab-panel" id="tab-bu">
+        <div class="panel-header">
+          <div>
+            <p class="panel-eyebrow">BU FOCUS</p>
+            <h1 class="panel-title">Productivity แยกตาม BU</h1>
+          </div>
+          <p class="panel-desc">Punthai 51/49/0 · Mart 40/50/10 · แยก Full Rack / Half Rack / EA (Column AJ)</p>
+        </div>
+        <div class="bu-grid" id="buGrid" aria-label="BU KPI"></div>
+      </section>
+
+      <!-- TAB: ZONE -->
+      <section class="tab-panel" id="tab-zone">
+        <div class="panel-header">
+          <div>
+            <p class="panel-eyebrow">POSITION BREAKDOWN</p>
+            <h1 class="panel-title">Productivity แยกตาม Zone</h1>
+          </div>
+          <p class="panel-desc">Zone EA มี Weight: EA-FA 85% / HA-HB 0% / YA 15% (Column AH)</p>
+        </div>
+        <div class="zone-grid" id="zoneBreakdownGrid" aria-label="Zone KPI"></div>
+      </section>
+
+      <!-- TAB: CHART -->
+      <section class="tab-panel" id="tab-chart">
+        <div class="panel-header">
+          <div>
+            <p class="panel-eyebrow">TARGET CHART</p>
+            <h1 class="panel-title">เทียบค่าเฉลี่ยกับ Target</h1>
+          </div>
+          <span id="chartNote" class="panel-desc">—</span>
+        </div>
+
+        <article class="chart-card-wrap">
+          <div id="barChart" class="bar-chart" aria-label="กราฟ KPI"></div>
+        </article>
+
+        <!-- DATA QUALITY TABLE -->
+        <div class="panel-header" style="margin-top: 2.5rem;">
+          <div>
+            <p class="panel-eyebrow">DATA QUALITY</p>
+            <h2 class="panel-title" style="font-size: 1.25rem;">ตัวอย่างข้อมูลที่ถูกตัดออก</h2>
+          </div>
+          <p class="panel-desc">ค่า AF เป็น 0 / ว่าง / อ่านไม่ได้</p>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>วันที่</th>
+                <th>Name</th>
+                <th>User ID</th>
+                <th>Total Pick</th>
+                <th>Avg Pick/Hr (AF)</th>
+                <th>เหตุผล</th>
+              </tr>
+            </thead>
+            <tbody id="excludedTableBody">
+              <tr><td colspan="6">กำลังโหลดข้อมูล...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </main>
+  </div>
 
   <script src="script.js"></script>
+  <script>
+    // ===== TAB SWITCHING =====
+    document.querySelectorAll('.nav-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        const panel = document.getElementById('tab-' + tab);
+        if (panel) panel.classList.add('active');
+      });
+    });
+  </script>
 </body>
 </html>

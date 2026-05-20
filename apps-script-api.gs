@@ -1,533 +1,1724 @@
 const SPREADSHEET_ID = "1PMnlyYHswnV0nE73Alxh-ocIFtTipB9LMzACdNM9GFs";
-const SHEET_NAME = "Results Master";
-const COMPACT_COLUMNS = ["Name", "Date", "User ID", "Total pick"];
-const AVERAGE_PICK_HR_COLUMN_INDEX = 31; // Column AF, 0-based index
+const RESULTS_SHEET_NAME = "Results Master";
+const UPDATE_NAME_SHEET_NAME = "Update name";
+
+const CACHE_SECONDS = 300;
+const CACHE_VERSION = "v35-smart-training-window";
+
+const SHEET_COLUMN = {
+  DATE: 3,        // C
+  USER_ID: 4,     // D
+  AVERAGE_AF: 32, // AF
+  SHIFT: 33,      // AG
+  POSITION: 34,   // AH
+  AFFILIATION: 35, // AI
+  BU: 36,         // AJ
+  PICK_TYPE: 37,  // AK
+};
+
+const UPDATE_NAME_COLUMN = {
+  USER_ID: 2,       // B
+  START_DATE: 8,    // H = วันที่เริ่มทำงาน
+  END_DATE: 13,     // M = วันที่จบ Training
+};
+
+const TARGETS = {
+  overall: 170,
+  fullRack: 170,
+  halfRack: 200,
+  ea: 170,
+};
+
+const PICK_TYPE_DETAILS = [
+  {
+    key: "fullRack",
+    title: "Picking Productivity - Full Rack (หยิบ)",
+    label: "Full Rack",
+    target: TARGETS.fullRack,
+  },
+  {
+    key: "halfRack",
+    title: "Picking Productivity - Half Rack (หยิบ)",
+    label: "Half Rack",
+    target: TARGETS.halfRack,
+  },
+  {
+    key: "ea",
+    title: "Picking Productivity - EA(หยิบ)",
+    label: "EA",
+    target: TARGETS.ea,
+  },
+];
+const ZONE_GROUPS = [
+  {
+    key: "fullRack",
+    title: "Picking Productivity - Full Rack (หยิบ)",
+    target: TARGETS.fullRack,
+    zones: [
+      { key: "fullRackAa", title: "Picking Productivity - Zone AA", label: "AA", codes: ["AA"] },
+      { key: "fullRackAgAh", title: "Picking Productivity - Zone AG-AH", label: "AG-AH", codes: ["AG", "AH"] },
+      { key: "fullRackAlBl", title: "Picking Productivity - Zone AL-BL", label: "AL-BL", codes: ["AL", "AM", "BL"] },
+      { key: "fullRackAnBn", title: "Picking Productivity - Zone AN-BN", label: "AN-BN", codes: ["AN", "AO", "BN"] },
+    ],
+  },
+  {
+    key: "halfRack",
+    title: "Picking Productivity - Half Rack (หยิบ)",
+    target: TARGETS.halfRack,
+    zones: [
+      { key: "halfRackAiAk", title: "Picking Productivity - Zone AI-AK", label: "AI-AK", codes: ["AI", "AJ", "AK"] },
+      { key: "halfRackBjBk", title: "Picking Productivity - Zone BJ-BK", label: "BJ-BK", codes: ["BJ", "BK"] },
+      { key: "halfRackCbCe", title: "Picking Productivity - Zone CB-CE", label: "CB-CE", codes: ["CB", "CC", "CD", "CE"] },
+      { key: "halfRackCf", title: "Picking Productivity - Zone CF", label: "CF", codes: ["CF"] },
+    ],
+  },
+  {
+    key: "ea",
+    title: "Picking Productivity - EA (หยิบ)",
+    target: TARGETS.ea,
+    zones: [
+      { key: "eaFa", title: "Picking Productivity - Zone EA-FA", label: "EA-FA", codes: ["EA", "FA"], mainKpi: 85 },
+      { key: "haHb", title: "Picking Productivity - Zone HA-HB", label: "HA-HB", codes: ["HA", "HB"], mainKpi: 0 },
+      { key: "ya", title: "Picking Productivity - Zone YA", label: "YA", codes: ["YA"], mainKpi: 15 },
+    ],
+  },
+];
+
+const BU_GROUPS = [
+  {
+    key: "punthai",
+    title: "BU - Punthai",
+    label: "Punthai",
+    match: ["punthai", "pun thai"],
+    focus: true,
+    pickMix: {
+      fullRack: 51,
+      halfRack: 49,
+      ea: 0,
+    },
+  },
+  {
+    key: "mart",
+    title: "BU - Mart",
+    label: "Mart",
+    match: ["mart"],
+    focus: true,
+    pickMix: {
+      fullRack: 40,
+      halfRack: 50,
+      ea: 10,
+    },
+  },
+  {
+    key: "other",
+    title: "Other BU",
+    label: "Other BU",
+    match: [],
+    focus: false,
+  },
+];
 
 function doGet(e) {
-  try {
-    const params = (e && e.parameter) || {};
-    const useDashboardPayload = String(params.dashboard || "").toLowerCase() === "true";
-    const useFullPayload = String(params.full || "").toLowerCase() === "true";
-    const payload = useDashboardPayload
-      ? buildDashboardPayload_(params)
-      : useFullPayload
-        ? buildFullResultsPayload_(params)
-        : buildCompactResultsPayload_(params);
+  const params = e && e.parameter ? e.parameter : {};
 
-    return ContentService
-      .createTextOutput(JSON.stringify(payload))
-      .setMimeType(ContentService.MimeType.JSON);
+  try {
+    const payload = getDashboardFast_(params);
+    return jsonOutput_(payload, params.callback);
   } catch (error) {
-    return ContentService
-      .createTextOutput(JSON.stringify({
-        ok: false,
-        error: error.message || String(error),
-      }))
-      .setMimeType(ContentService.MimeType.JSON);
+    return jsonOutput_({
+      ok: false,
+      error: error.message || String(error),
+    }, params.callback);
   }
 }
 
-function buildDashboardPayload_(params) {
-  const sheet = getResultsSheet_();
-  const lastRow = sheet.getLastRow();
-  const lastColumn = sheet.getLastColumn();
+function getDashboardFast_(params) {
+  const mode = String(params.mode || "").toLowerCase();
 
-  if (lastRow < 2 || lastColumn < 1) {
+  // โหมดนี้ใช้สร้างดัชนีรายวันแบบย่อ โหลดครั้งเดียวแล้วให้หน้าเว็บ Filter ในเครื่องทันที
+  if (mode === "dailyindex") {
+    return getDailyIndexFast_(params);
+  }
+
+  const startDate = params.startDate || params.startDateDMY || "";
+  const endDate = params.endDate || params.endDateDMY || "";
+  const forceRefresh = isTrue_(params.refresh) || isTrue_(params.force);
+  const cacheKey = getCacheKey_(startDate, endDate);
+  const cache = CacheService.getScriptCache();
+
+  if (!forceRefresh) {
+    const memoryCached = cache.get(cacheKey);
+
+    if (memoryCached) {
+      const payload = JSON.parse(memoryCached);
+
+      if (isUsableDashboardPayload_(payload)) {
+        payload.cacheStatus = "memory-cache";
+        payload.cacheAgeSeconds = getCacheAgeSeconds_(payload.generatedAt);
+        return payload;
+      }
+    }
+  }
+
+  const lock = LockService.getScriptLock();
+  let hasLock = false;
+
+  try {
+    hasLock = lock.tryLock(1200);
+  } catch (lockError) {
+    hasLock = false;
+  }
+
+  try {
+    // ถ้าระหว่างรอ lock มี request อื่นสร้าง cache เสร็จแล้ว ให้ใช้ cache ทันที
+    if (!forceRefresh) {
+      const cachedAfterLock = cache.get(cacheKey);
+
+      if (cachedAfterLock) {
+        const payload = JSON.parse(cachedAfterLock);
+
+        if (isUsableDashboardPayload_(payload)) {
+          payload.cacheStatus = "memory-cache";
+          payload.cacheAgeSeconds = getCacheAgeSeconds_(payload.generatedAt);
+          return payload;
+        }
+      }
+    }
+
+    const payload = buildDashboardPayload_(startDate, endDate);
+    saveDashboardPayload_(cacheKey, payload);
+    return payload;
+  } finally {
+    if (hasLock) {
+      lock.releaseLock();
+    }
+  }
+}
+
+function getDailyIndexFast_(params) {
+  const forceRefresh = isTrue_(params.refresh) || isTrue_(params.force);
+  const cacheKey = `pick_dashboard_daily_index_${CACHE_VERSION}`;
+  const cache = CacheService.getScriptCache();
+
+  if (!forceRefresh) {
+    const memoryCached = cache.get(cacheKey);
+
+    if (memoryCached) {
+      const payload = JSON.parse(memoryCached);
+      payload.cacheStatus = "memory-cache";
+      payload.cacheAgeSeconds = getCacheAgeSeconds_(payload.generatedAt);
+      return payload;
+    }
+
+  }
+
+  const lock = LockService.getScriptLock();
+  const hasLock = lock.tryLock(1500);
+
+  if (!hasLock) {
+    const cachedWhileLocked = cache.get(cacheKey);
+
+    if (cachedWhileLocked) {
+      const payload = JSON.parse(cachedWhileLocked);
+      payload.cacheStatus = "memory-cache";
+      payload.cacheAgeSeconds = getCacheAgeSeconds_(payload.generatedAt);
+      return payload;
+    }
+  }
+
+  try {
+    const payload = buildDailyIndexPayload_();
+    saveDailyIndexPayload_(cacheKey, payload);
+    return payload;
+  } finally {
+    if (hasLock) {
+      lock.releaseLock();
+    }
+  }
+}
+
+function buildDailyIndexPayload_() {
+  const startedAt = Date.now();
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(RESULTS_SHEET_NAME);
+
+  if (!sheet) {
+    throw new Error(`ไม่พบ Sheet: ${RESULTS_SHEET_NAME}`);
+  }
+
+  const trainingRoster = createTrainingRoster_(ss);
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow < 2) {
     return {
       ok: true,
-      mode: "dashboard",
-      spreadsheetId: SPREADSHEET_ID,
-      sheetName: SHEET_NAME,
-      overall: buildMetricSummary_([]),
-      categories: buildCategorySummaries_({ fullRack: [], halfRack: [], ea: [] }),
-      excludedSamples: [],
+      mode: "dailyIndex",
+      generatedAt: new Date().toISOString(),
+      elapsedMs: Date.now() - startedAt,
+      cacheStatus: "fresh",
+      cacheVersion: CACHE_VERSION,
+      trainingUserCount: Object.keys(trainingRoster || {}).length,
+      trainingRoster: serializeTrainingRoster_(trainingRoster),
+      trainingDebug: createTrainingDebugPayload_(trainingRoster, {}, []),
+      dateKeys: [],
+      dates: {},
+      totalRows: 0,
+      invalidDateRows: 0,
+      emptyDateRows: 0,
     };
   }
 
-  const displayValues = sheet.getRange(1, 1, lastRow, lastColumn).getDisplayValues();
-  const headers = makeUniqueHeaders_(displayValues[0]);
-  const dateIndex = findFirstHeaderIndex_(headers, ["Date", "วันที่", "Pick Date", "Work Date", "Actual Date"]);
-  const nameIndex = findFirstHeaderIndex_(headers, ["Name", "ชื่อ", "ชื่อพนักงาน", "Employee Name"]);
-  const userIdIndex = findFirstHeaderIndex_(headers, ["User ID", "UserID", "Employee ID", "รหัสพนักงาน"]);
-  const totalPickIndex = findFirstHeaderIndex_(headers, ["Total pick", "Total Pick", "Total Picking", "ยอดหยิบ", "จำนวนหยิบ"]);
-  const categoryIndexes = findCategoryHeaderIndexes_(headers);
-  const startDate = parseDateInput_(params.startDate);
-  const endDate = parseDateInput_(params.endDate, true);
-
-  const validRows = [];
-  const excludedRows = [];
-  const categoryRows = {
-    fullRack: [],
-    halfRack: [],
-    ea: [],
+  const numRows = lastRow - 1;
+  const dataColumnCount = SHEET_COLUMN.PICK_TYPE - SHEET_COLUMN.DATE + 1;
+  const dataRange = sheet.getRange(2, SHEET_COLUMN.DATE, numRows, dataColumnCount);
+  const dataValues = dataRange.getValues();
+  const dataDisplayValues = dataRange.getDisplayValues();
+  const columnOffset = {
+    date: SHEET_COLUMN.DATE - SHEET_COLUMN.DATE,
+    userId: SHEET_COLUMN.USER_ID - SHEET_COLUMN.DATE,
+    average: SHEET_COLUMN.AVERAGE_AF - SHEET_COLUMN.DATE,
+    shift: SHEET_COLUMN.SHIFT - SHEET_COLUMN.DATE,
+    position: SHEET_COLUMN.POSITION - SHEET_COLUMN.DATE,
+    affiliation: SHEET_COLUMN.AFFILIATION - SHEET_COLUMN.DATE,
+    bu: SHEET_COLUMN.BU - SHEET_COLUMN.DATE,
+    pickType: SHEET_COLUMN.PICK_TYPE - SHEET_COLUMN.DATE,
   };
-  let totalRowsInRange = 0;
 
-  for (let rowIndex = 1; rowIndex < displayValues.length; rowIndex += 1) {
-    const row = displayValues[rowIndex];
+  const dates = {};
+  let emptyDateRows = 0;
+  let invalidDateRows = 0;
 
-    if (row.every((cell) => cell === "")) {
+  for (let index = 0; index < numRows; index += 1) {
+    const rawDateValue = dataValues[index][columnOffset.date];
+    const displayDateValue = dataDisplayValues[index][columnOffset.date];
+    const rowDate = normalizeSheetDate_(rawDateValue, displayDateValue);
+
+    if (!rowDate) {
+      const sampleText = String(displayDateValue || rawDateValue || "").trim();
+
+      if (sampleText) {
+        invalidDateRows += 1;
+      } else {
+        emptyDateRows += 1;
+      }
+
       continue;
     }
 
-    const rowDate = dateIndex >= 0 ? parseFlexibleDate_(row[dateIndex]) : null;
+    const dateKey = formatDateISO_(rowDate);
 
-    if (!isWithinDateRange_(rowDate, startDate, endDate)) {
+    if (!dates[dateKey]) {
+      dates[dateKey] = createDailyRawSummary_();
+    }
+
+    const day = dates[dateKey];
+    day.filteredRows += 1;
+
+    const average = toNumber_(dataValues[index][columnOffset.average]);
+
+    if (average <= 0) {
+      day.excludedCount += 1;
       continue;
     }
 
-    totalRowsInRange += 1;
+    addTrainingValue_(
+      day.training,
+      trainingRoster,
+      dataDisplayValues[index][columnOffset.userId] || dataValues[index][columnOffset.userId],
+      rowDate,
+      average
+    );
 
-    const averageValueText = row[AVERAGE_PICK_HR_COLUMN_INDEX] || "";
-    const averagePickHr = parseNumber_(averageValueText);
-    const rowInfo = {
-      date: dateIndex >= 0 ? row[dateIndex] : "",
-      name: nameIndex >= 0 ? row[nameIndex] : "",
-      userId: userIdIndex >= 0 ? row[userIdIndex] : "",
-      totalPick: totalPickIndex >= 0 ? row[totalPickIndex] : "",
-      averagePickHr: averageValueText,
-    };
+    addValue_(day.overall, average);
 
-    if (!Number.isFinite(averagePickHr) || averagePickHr <= 0) {
-      excludedRows.push(Object.assign({}, rowInfo, {
-        reason: averageValueText === "" ? "Column AF ว่าง" : "Column AF เป็น 0 หรือไม่ใช่ตัวเลข",
-      }));
+    const pickType = normalizePickType_(dataValues[index][columnOffset.pickType]);
+
+    if (pickType && day.categories[pickType]) {
+      addValue_(day.categories[pickType], average);
+    }
+
+    const zoneMatch = findZoneMatch_(dataDisplayValues[index][columnOffset.position]);
+
+    if (zoneMatch && day.zones[zoneMatch.groupKey] && day.zones[zoneMatch.groupKey][zoneMatch.zoneKey]) {
+      addValue_(day.zones[zoneMatch.groupKey][zoneMatch.zoneKey], average);
+    }
+
+    addShiftValue_(day.shifts, dataDisplayValues[index][columnOffset.shift], dataDisplayValues[index][columnOffset.affiliation], average);
+
+    const buKey = normalizeBu_(dataDisplayValues[index][columnOffset.bu]);
+    addValue_(day.bu[buKey], average);
+
+    if (pickType && day.bu[buKey].details && day.bu[buKey].details[pickType]) {
+      addValue_(day.bu[buKey].details[pickType], average);
+    }
+  }
+
+  const dateKeys = Object.keys(dates).sort();
+  const trainingDebugSummary = createTrainingSummary_();
+  seedTrainingSummary_(trainingDebugSummary, trainingRoster);
+
+  dateKeys.forEach((dateKey) => {
+    const dayTraining = dates[dateKey] && dates[dateKey].training || {};
+
+    Object.keys(dayTraining).forEach((userId) => {
+      if (!trainingDebugSummary[userId]) {
+        trainingDebugSummary[userId] = {
+          userId: userId,
+          name: dayTraining[userId].name || `User ID ${userId}`,
+          startDate: dayTraining[userId].startDate || null,
+          endDate: dayTraining[userId].endDate || null,
+          startDateCandidates: dayTraining[userId].startDateCandidates || [],
+          endDateCandidates: dayTraining[userId].endDateCandidates || [],
+          daily: {},
+          matchedFrom: {},
+        };
+      }
+
+      Object.keys(dayTraining[userId].daily || {}).forEach((dailyKey) => {
+        if (!trainingDebugSummary[userId].daily[dailyKey]) {
+          trainingDebugSummary[userId].daily[dailyKey] = createBucket_();
+        }
+
+        mergeBucket_(trainingDebugSummary[userId].daily[dailyKey], dayTraining[userId].daily[dailyKey]);
+      });
+
+      Object.keys(dayTraining[userId].matchedFrom || {}).forEach((sourceUserId) => {
+        trainingDebugSummary[userId].matchedFrom[sourceUserId] = true;
+      });
+    });
+  });
+
+  return {
+    ok: true,
+    mode: "dailyIndex",
+    generatedAt: new Date().toISOString(),
+    elapsedMs: Date.now() - startedAt,
+    cacheStatus: "fresh",
+    cacheVersion: CACHE_VERSION,
+    sourceColumn: "C",
+    sourceFormat: "DD/MM/YYYY",
+    trainingSource: "Update name!B/H/M + Traning/Training row",
+    trainingUserCount: Object.keys(trainingRoster || {}).length,
+    trainingRoster: serializeTrainingRoster_(trainingRoster),
+    trainingDebug: createTrainingDebugPayload_(trainingRoster, trainingDebugSummary, []),
+    dateKeys: dateKeys,
+    dates: dates,
+    totalRows: dateKeys.reduce((sum, dateKey) => sum + (dates[dateKey].filteredRows || 0), 0),
+    invalidDateRows: invalidDateRows,
+    emptyDateRows: emptyDateRows,
+  };
+}
+
+function createDailyRawSummary_() {
+  return {
+    filteredRows: 0,
+    excludedCount: 0,
+    overall: createBucket_(),
+    categories: {
+      fullRack: createBucket_(),
+      halfRack: createBucket_(),
+      ea: createBucket_(),
+    },
+    zones: createZoneSummary_(),
+    bu: createBuSummary_(),
+    shifts: createShiftSummary_(),
+    training: createTrainingSummary_(),
+  };
+}
+
+function formatDateISO_(date) {
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    return "";
+  }
+
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function buildDashboardPayload_(startDateText, endDateText) {
+  const startedAt = Date.now();
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(RESULTS_SHEET_NAME);
+
+  if (!sheet) {
+    throw new Error(`ไม่พบ Sheet: ${RESULTS_SHEET_NAME}`);
+  }
+
+  const trainingRoster = createTrainingRoster_(ss);
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow < 2) {
+    return emptyPayload_(startedAt, startDateText, endDateText);
+  }
+
+  const numRows = lastRow - 1;
+  const startDate = startDateText ? parseInputDate_(startDateText) : null;
+  const endDate = endDateText ? parseInputDate_(endDateText) : null;
+
+  if (endDate) {
+    endDate.setHours(23, 59, 59, 999);
+  }
+
+  // อ่านช่วง C:AK ครั้งเดียว เพื่อลดเวลารอ Google Sheet ตอน Filter
+  // C = วันที่, AF = Average Pick/Hr, AG = Shift, AH = Zone, AI = สังกัด, AJ = BU, AK = Pick Type
+  const dataColumnCount = SHEET_COLUMN.PICK_TYPE - SHEET_COLUMN.DATE + 1;
+  const dataRange = sheet.getRange(2, SHEET_COLUMN.DATE, numRows, dataColumnCount);
+  const dataValues = dataRange.getValues();
+  const dataDisplayValues = dataRange.getDisplayValues();
+  const shouldFilterByDate = Boolean(startDate || endDate);
+  const columnOffset = {
+    date: SHEET_COLUMN.DATE - SHEET_COLUMN.DATE,
+    userId: SHEET_COLUMN.USER_ID - SHEET_COLUMN.DATE,
+    average: SHEET_COLUMN.AVERAGE_AF - SHEET_COLUMN.DATE,
+    shift: SHEET_COLUMN.SHIFT - SHEET_COLUMN.DATE,
+    position: SHEET_COLUMN.POSITION - SHEET_COLUMN.DATE,
+    affiliation: SHEET_COLUMN.AFFILIATION - SHEET_COLUMN.DATE,
+    bu: SHEET_COLUMN.BU - SHEET_COLUMN.DATE,
+    pickType: SHEET_COLUMN.PICK_TYPE - SHEET_COLUMN.DATE,
+  };
+
+  const summary = {
+    overall: createBucket_(),
+    fullRack: createBucket_(),
+    halfRack: createBucket_(),
+    ea: createBucket_(),
+  };
+  const zoneSummary = createZoneSummary_();
+  const buSummary = createBuSummary_();
+  const shiftSummary = createShiftSummary_();
+  const trainingSummary = createTrainingSummary_();
+  seedTrainingSummary_(trainingSummary, trainingRoster);
+
+  let filteredRows = 0;
+  let excludedCount = 0;
+  const filterDiagnostics = {
+    enabled: shouldFilterByDate,
+    sourceColumn: "C",
+    sourceFormat: "DD/MM/YYYY",
+    inputStartDate: startDateText || "",
+    inputEndDate: endDateText || "",
+    emptyDateRows: 0,
+    invalidDateRows: 0,
+    beforeStartRows: 0,
+    afterEndRows: 0,
+    matchedDateRows: 0,
+    firstMatchedDate: "",
+    lastMatchedDate: "",
+    firstInvalidSamples: [],
+  };
+
+  for (let index = 0; index < numRows; index += 1) {
+    const rawDateValueForTraining = dataValues[index][columnOffset.date];
+    const displayDateValueForTraining = dataDisplayValues[index][columnOffset.date];
+    const rowDateForTraining = normalizeSheetDate_(rawDateValueForTraining, displayDateValueForTraining);
+    const average = toNumber_(dataValues[index][columnOffset.average]);
+
+    if (average > 0) {
+      addTrainingValue_(
+        trainingSummary,
+        trainingRoster,
+        dataDisplayValues[index][columnOffset.userId] || dataValues[index][columnOffset.userId],
+        rowDateForTraining,
+        average
+      );
+    }
+
+    if (shouldFilterByDate) {
+      const rawDateValue = rawDateValueForTraining;
+      const displayDateValue = displayDateValueForTraining;
+      const rowDate = rowDateForTraining;
+
+      if (!rowDate) {
+        const sampleText = String(displayDateValue || rawDateValue || "").trim();
+
+        if (sampleText) {
+          filterDiagnostics.invalidDateRows += 1;
+
+          if (filterDiagnostics.firstInvalidSamples.length < 5) {
+            filterDiagnostics.firstInvalidSamples.push(sampleText);
+          }
+        } else {
+          filterDiagnostics.emptyDateRows += 1;
+        }
+
+        continue;
+      }
+
+      if (startDate && rowDate < startDate) {
+        filterDiagnostics.beforeStartRows += 1;
+        continue;
+      }
+
+      if (endDate && rowDate > endDate) {
+        filterDiagnostics.afterEndRows += 1;
+        continue;
+      }
+
+      const matchedText = formatDateDMY_(rowDate);
+      filterDiagnostics.matchedDateRows += 1;
+      filterDiagnostics.firstMatchedDate = filterDiagnostics.firstMatchedDate || matchedText;
+      filterDiagnostics.lastMatchedDate = matchedText;
+    }
+
+    filteredRows += 1;
+
+    if (average <= 0) {
+      excludedCount += 1;
       continue;
     }
 
-    validRows.push(averagePickHr);
+    addValue_(summary.overall, average);
 
-    const category = detectCategory_(row, categoryIndexes);
+    const pickType = normalizePickType_(dataValues[index][columnOffset.pickType]);
 
-    if (category && categoryRows[category]) {
-      categoryRows[category].push(averagePickHr);
+    if (pickType && summary[pickType]) {
+      addValue_(summary[pickType], average);
+    }
+
+    const zoneMatch = findZoneMatch_(dataDisplayValues[index][columnOffset.position]);
+
+    if (zoneMatch && zoneSummary[zoneMatch.groupKey] && zoneSummary[zoneMatch.groupKey][zoneMatch.zoneKey]) {
+      addValue_(zoneSummary[zoneMatch.groupKey][zoneMatch.zoneKey], average);
+    }
+
+    addShiftValue_(shiftSummary, dataDisplayValues[index][columnOffset.shift], dataDisplayValues[index][columnOffset.affiliation], average);
+
+    const buKey = normalizeBu_(dataDisplayValues[index][columnOffset.bu]);
+    addValue_(buSummary[buKey], average);
+
+    if (pickType && buSummary[buKey].details && buSummary[buKey].details[pickType]) {
+      addValue_(buSummary[buKey].details[pickType], average);
     }
   }
 
   return {
     ok: true,
-    mode: "dashboard",
-    spreadsheetId: SPREADSHEET_ID,
-    sheetName: SHEET_NAME,
-    averageSource: "Results Master Column AF",
-    rules: "Average excludes 0, blank, and non-numeric AF values.",
-    filters: {
-      startDate: params.startDate || "",
-      endDate: params.endDate || "",
+    generatedAt: new Date().toISOString(),
+    elapsedMs: Date.now() - startedAt,
+    cacheStatus: "fresh",
+    cacheVersion: CACHE_VERSION,
+    range: {
+      startDate: startDateText || "",
+      endDate: endDateText || "",
     },
-    overall: Object.assign(buildMetricSummary_(validRows), {
-      totalRows: totalRowsInRange,
-      excludedCount: excludedRows.length,
-    }),
-    categories: buildCategorySummaries_(categoryRows),
-    excludedSamples: excludedRows.slice(0, 10),
+    overall: finalizeBucket_(summary.overall, TARGETS.overall, filteredRows, excludedCount),
+    categories: {
+      fullRack: finalizeBucket_(summary.fullRack, TARGETS.fullRack),
+      halfRack: finalizeBucket_(summary.halfRack, TARGETS.halfRack),
+      ea: finalizeBucket_(summary.ea, TARGETS.ea),
+    },
+    zones: finalizeZones_(zoneSummary),
+    bu: finalizeBu_(buSummary),
+    shifts: finalizeShifts_(shiftSummary),
+    training: finalizeTrainingSummary_(trainingSummary),
+    totalRows: filteredRows,
+    filteredRows: filteredRows,
+    filterDiagnostics: filterDiagnostics,
+    trainingSource: "Update name!B/H/M + Traning/Training row",
+    trainingUserCount: Object.keys(trainingRoster || {}).length,
+    trainingDebug: createTrainingDebugPayload_(trainingRoster, trainingSummary, []),
+    excludedSamples: [],
   };
 }
 
-function buildMetricSummary_(values) {
-  const cleaned = values.filter((value) => Number.isFinite(value) && value > 0);
-  const sum = cleaned.reduce((total, value) => total + value, 0);
-  const average = cleaned.length ? sum / cleaned.length : 0;
 
-  return {
-    average: roundNumber_(average, 2),
-    count: cleaned.length,
-    validCount: cleaned.length,
-    sum: roundNumber_(sum, 2),
-  };
-}
+function createTrainingRoster_(ss) {
+  const sheet = ss.getSheetByName(UPDATE_NAME_SHEET_NAME);
 
-function buildCategorySummaries_(categoryRows) {
-  return {
-    fullRack: Object.assign(buildMetricSummary_(categoryRows.fullRack || []), {
-      title: "Picking Productivity - Full Rack (หยิบ)",
-      mainKpi: 37,
-      target: 170,
-    }),
-    halfRack: Object.assign(buildMetricSummary_(categoryRows.halfRack || []), {
-      title: "Picking Productivity - Half Rack (หยิบ)",
-      mainKpi: 48,
-      target: 200,
-    }),
-    ea: Object.assign(buildMetricSummary_(categoryRows.ea || []), {
-      title: "Picking Productivity - EA (หยิบ)",
-      mainKpi: 15,
-      target: 170,
-    }),
-  };
-}
-
-function detectCategory_(row, categoryIndexes) {
-  const focusedText = categoryIndexes
-    .map((index) => row[index])
-    .filter(Boolean)
-    .join(" ");
-  const scanText = focusedText || row.join(" ");
-  const normalized = normalizeCategoryText_(scanText);
-
-  if (/(\bea\b|each|ชิ้น|อีเอ)/i.test(normalized)) {
-    return "ea";
+  if (!sheet) {
+    return {};
   }
 
-  if (/(half\s*rack|half|ครึ่ง)/i.test(normalized)) {
-    return "halfRack";
+  const lastRow = sheet.getLastRow();
+  const lastColumn = sheet.getLastColumn();
+
+  if (lastRow < 2 || lastColumn < UPDATE_NAME_COLUMN.END_DATE) {
+    return {};
   }
 
-  if (/(full\s*rack|full|เต็ม)/i.test(normalized)) {
-    return "fullRack";
+  const range = sheet.getRange(2, 1, lastRow - 1, lastColumn);
+  const values = range.getValues();
+  const displayValues = range.getDisplayValues();
+
+  // รอบแรก: เอาเฉพาะแถวที่ระบุว่า Traning / Training แบบยืดหยุ่น
+  const keywordRoster = collectTrainingRoster_(values, displayValues, true);
+
+  if (Object.keys(keywordRoster).length > 1) {
+    return keywordRoster;
+  }
+
+  // Fallback: ถ้าเจอแค่ 0-1 คน แปลว่าคำว่า Traning อาจอยู่ในรูปแบบอื่น
+  // จึงใช้ User ID + วันที่เริ่มงาน Column H เป็นตัวช่วย เพื่อไม่ให้ข้อมูล Training หลุดทั้งชุด
+  const fallbackRoster = collectTrainingRoster_(values, displayValues, false);
+  return Object.keys(fallbackRoster).length > Object.keys(keywordRoster).length ? fallbackRoster : keywordRoster;
+}
+
+function collectTrainingRoster_(values, displayValues, requireTrainingKeyword) {
+  const roster = {};
+
+  for (let index = 0; index < values.length; index += 1) {
+    const displayRow = displayValues[index] || [];
+    const valueRow = values[index] || [];
+    const userId = normalizeUserId_(displayRow[UPDATE_NAME_COLUMN.USER_ID - 1] || valueRow[UPDATE_NAME_COLUMN.USER_ID - 1]);
+
+    if (!userId) {
+      continue;
+    }
+
+    const startRaw = valueRow[UPDATE_NAME_COLUMN.START_DATE - 1];
+    const startDisplay = displayRow[UPDATE_NAME_COLUMN.START_DATE - 1];
+    const endRaw = valueRow[UPDATE_NAME_COLUMN.END_DATE - 1];
+    const endDisplay = displayRow[UPDATE_NAME_COLUMN.END_DATE - 1];
+    const startDateCandidates = getDateCandidates_(startRaw, startDisplay);
+    const endDateCandidates = getDateCandidates_(endRaw, endDisplay);
+    const startDate = startDateCandidates[0] || null;
+    const endDate = endDateCandidates[0] || null;
+
+    if (!startDate) {
+      continue;
+    }
+
+    if (requireTrainingKeyword && !isTrainingRow_(displayRow, valueRow)) {
+      continue;
+    }
+
+    mergeTrainingRosterItem_(roster, {
+      userId: userId,
+      name: findTrainingDisplayName_(displayRow, userId),
+      startDate: startDate,
+      endDate: endDate,
+      startDateCandidates: startDateCandidates,
+      endDateCandidates: endDateCandidates,
+      startDateRawText: String(startDisplay || startRaw || ""),
+      endDateRawText: String(endDisplay || endRaw || ""),
+    });
+  }
+
+  return roster;
+}
+
+function mergeTrainingRosterItem_(roster, item) {
+  const current = roster[item.userId];
+
+  if (!current) {
+    roster[item.userId] = item;
+    return;
+  }
+
+  // ถ้า User ID ซ้ำ ให้ใช้วันเริ่มที่เร็วที่สุดและวันจบ Training ที่ไกลที่สุด
+  if (item.startDate && (!current.startDate || item.startDate < current.startDate)) {
+    current.startDate = item.startDate;
+  }
+
+  if (item.endDate && (!current.endDate || item.endDate > current.endDate)) {
+    current.endDate = item.endDate;
+  }
+
+  current.startDateCandidates = mergeDateCandidateLists_(current.startDateCandidates, item.startDateCandidates);
+  current.endDateCandidates = mergeDateCandidateLists_(current.endDateCandidates, item.endDateCandidates);
+  current.startDateRawText = current.startDateRawText || item.startDateRawText || "";
+  current.endDateRawText = current.endDateRawText || item.endDateRawText || "";
+
+  if ((!current.name || /^User ID/i.test(current.name)) && item.name) {
+    current.name = item.name;
+  }
+}
+
+function isTrainingRow_(displayRow, valueRow) {
+  return (displayRow || valueRow || []).some((cell, index) => {
+    const valueText = valueRow && valueRow[index] !== undefined ? String(valueRow[index] || "") : "";
+    const text = `${cell || ""} ${valueText}`.replace(/\s+/g, "").toLowerCase();
+
+    // รองรับ Traning ที่สะกดผิด, Training, ข้อความยาวเช่น Training-New, และคำไทยที่เกี่ยวกับเทรน/ฝึก
+    return /traning|training|trainee|train|เทรน|ฝึก/.test(text);
+  });
+}
+
+function findTrainingDisplayName_(displayRow, userId) {
+  const candidates = [
+    displayRow[2], // C มักเป็นชื่อ ถ้ามี
+    displayRow[3],
+    displayRow[4],
+    displayRow[5],
+  ];
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    const text = normalizeGroupLabel_(candidates[index], "");
+
+    if (text && normalizeUserId_(text) !== userId && !/^training$/i.test(text) && !/^traning$/i.test(text)) {
+      return text;
+    }
+  }
+
+  return `User ID ${userId}`;
+}
+
+function normalizeUserId_(value) {
+  let text = String(value === null || value === undefined ? "" : value)
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/^'+|'+$/g, "")
+    .replace(/,/g, "")
+    .replace(/[\s\u00A0]+/g, "")
+    .trim();
+
+  if (!text) {
+    return "";
+  }
+
+  text = text.replace(/\.0+$/, "");
+  return text.toUpperCase();
+}
+
+function getUserIdAliasList_(value) {
+  const normalized = normalizeUserId_(value);
+
+  if (!normalized) {
+    return [];
+  }
+
+  const aliases = {};
+  aliases[normalized] = true;
+
+  const compact = normalized.replace(/[^0-9A-Z]/g, "");
+  if (compact) aliases[compact] = true;
+
+  const digitsOnly = normalized.replace(/\D/g, "");
+  if (digitsOnly) {
+    aliases[digitsOnly] = true;
+    aliases[digitsOnly.replace(/^0+/, "") || "0"] = true;
+
+    // ใช้เลขท้ายเฉพาะกรณียาวพอ เพื่อช่วยเคส ID-123456 / 000123456 แต่ลดโอกาสจับผิดคน
+    if (digitsOnly.length >= 5) aliases[digitsOnly.slice(-5)] = true;
+    if (digitsOnly.length >= 6) aliases[digitsOnly.slice(-6)] = true;
+  }
+
+  return Object.keys(aliases).filter(Boolean);
+}
+
+function resolveTrainingRosterKey_(trainingRoster, userIdValue) {
+  const directKey = normalizeUserId_(userIdValue);
+
+  if (directKey && trainingRoster[directKey]) {
+    return directKey;
+  }
+
+  const sourceAliases = getUserIdAliasList_(userIdValue);
+
+  if (sourceAliases.length === 0) {
+    return "";
+  }
+
+  const sourceAliasMap = sourceAliases.reduce((map, alias) => {
+    map[alias] = true;
+    return map;
+  }, {});
+
+  const matches = [];
+
+  Object.keys(trainingRoster || {}).forEach((rosterKey) => {
+    const rosterAliases = getUserIdAliasList_(rosterKey);
+
+    if (rosterAliases.some((alias) => sourceAliasMap[alias])) {
+      matches.push(rosterKey);
+    }
+  });
+
+  // กันจับผิดคน: alias จะใช้เฉพาะกรณีเจอผู้สมัครตรงได้คนเดียวเท่านั้น
+  return matches.length === 1 ? matches[0] : "";
+}
+
+function createTrainingSummary_() {
+  return {};
+}
+
+function seedTrainingSummary_(trainingSummary, trainingRoster) {
+  Object.keys(trainingRoster || {}).forEach((userId) => {
+    const rosterItem = trainingRoster[userId] || {};
+
+    if (!trainingSummary[userId]) {
+      trainingSummary[userId] = {
+        userId: userId,
+        name: rosterItem.name || `User ID ${userId}`,
+        startDate: rosterItem.startDate || null,
+        endDate: rosterItem.endDate || null,
+        startDateCandidates: rosterItem.startDateCandidates || (rosterItem.startDate ? [rosterItem.startDate] : []),
+        endDateCandidates: rosterItem.endDateCandidates || (rosterItem.endDate ? [rosterItem.endDate] : []),
+        daily: {},
+        matchedFrom: {},
+      };
+    }
+  });
+}
+
+function serializeTrainingRoster_(trainingRoster) {
+  return Object.keys(trainingRoster || {}).map((userId) => {
+    const item = trainingRoster[userId] || {};
+
+    return {
+      userId: userId,
+      name: item.name || `User ID ${userId}`,
+      startDate: item.startDate ? formatDateISO_(item.startDate) : "",
+      endDate: item.endDate ? formatDateISO_(item.endDate) : "",
+      startDateCandidates: (item.startDateCandidates || []).map(formatDateISO_),
+      endDateCandidates: (item.endDateCandidates || []).map(formatDateISO_),
+    };
+  });
+}
+
+function addTrainingValue_(trainingSummary, trainingRoster, userIdValue, workDate, average) {
+  const rosterKey = resolveTrainingRosterKey_(trainingRoster, userIdValue);
+  const rosterItem = rosterKey ? trainingRoster[rosterKey] : null;
+
+  if (!rosterItem || !(workDate instanceof Date) || isNaN(workDate.getTime())) {
+    return;
+  }
+
+  if (!trainingSummary[rosterKey]) {
+    trainingSummary[rosterKey] = {
+      userId: rosterKey,
+      name: rosterItem.name || `User ID ${rosterKey}`,
+      startDate: rosterItem.startDate || null,
+      endDate: rosterItem.endDate || null,
+      daily: {},
+      matchedFrom: {},
+    };
+  }
+
+  const trainee = trainingSummary[rosterKey];
+  const dayKey = formatDateISO_(workDate);
+  const normalizedSourceUserId = normalizeUserId_(userIdValue);
+
+  if (normalizedSourceUserId) {
+    trainee.matchedFrom[normalizedSourceUserId] = true;
+  }
+
+  if (!trainee.daily[dayKey]) {
+    trainee.daily[dayKey] = createBucket_();
+  }
+
+  addValue_(trainee.daily[dayKey], average);
+}
+
+function countTrainingDailyRows_(trainee) {
+  return Object.keys(trainee && trainee.daily || {}).reduce((sum, dateKey) => {
+    const bucket = trainee.daily[dateKey] || {};
+    return sum + Number(bucket.count || 0);
+  }, 0);
+}
+
+function createTrainingDebugPayload_(trainingRoster, trainingSummary, resultUserSamples) {
+  const rosterUserIds = Object.keys(trainingRoster || {}).sort((left, right) => left.localeCompare(right, "th"));
+  const matchedUserIds = rosterUserIds.filter((userId) => countTrainingDailyRows_(trainingSummary[userId]) > 0);
+  const noResultUserIds = rosterUserIds.filter((userId) => countTrainingDailyRows_(trainingSummary[userId]) <= 0);
+
+  return {
+    version: CACHE_VERSION,
+    trainingUserCount: rosterUserIds.length,
+    trainingMatchedCount: matchedUserIds.length,
+    trainingNoResultCount: noResultUserIds.length,
+    sampleTrainingUsers: rosterUserIds.slice(0, 20).map((userId) => {
+      const item = trainingRoster[userId] || {};
+      const summary = trainingSummary[userId] || {};
+      return {
+        userId: userId,
+        aliases: getUserIdAliasList_(userId).slice(0, 6),
+        name: item.name || summary.name || `User ID ${userId}`,
+        startDate: item.startDate ? formatDateDMY_(item.startDate) : "",
+        endDate: item.endDate ? formatDateDMY_(item.endDate) : "",
+        startCandidates: (item.startDateCandidates || []).slice(0, 4).map(formatDateDMY_),
+        endCandidates: (item.endDateCandidates || []).slice(0, 4).map(formatDateDMY_),
+        resultRows: countTrainingDailyRows_(summary),
+        matchedFrom: Object.keys(summary.matchedFrom || {}).slice(0, 8),
+      };
+    }),
+    sampleMatchedUsers: matchedUserIds.slice(0, 20),
+    sampleNoResultUsers: noResultUserIds.slice(0, 20),
+    sampleResultUsers: Array.isArray(resultUserSamples) ? resultUserSamples.slice(0, 20) : [],
+  };
+}
+
+function finalizeTrainingSummary_(trainingSummary) {
+  return Object.keys(trainingSummary || {})
+    .map((userId) => finalizeTrainingItem_(trainingSummary[userId]))
+    .sort((left, right) => {
+      const dataDiff = Number(right.count > 0) - Number(left.count > 0);
+      const improveDiff = Number(right.improvement || 0) - Number(left.improvement || 0);
+      return dataDiff || improveDiff || left.name.localeCompare(right.name, "th");
+    })
+    .slice(0, 100);
+}
+
+function finalizeTrainingItem_(trainee) {
+  const startDate = trainee.startDate || null;
+  const officialEndDate = trainee.endDate || (startDate ? addMonths_(startDate, 2) : null);
+  const officialWindow = createTrainingWindow_(startDate, officialEndDate, "official");
+  const officialScore = scoreTrainingWindow_(trainee, officialWindow);
+  const smartWindow = chooseSmartTrainingWindow_(trainee, officialWindow, officialScore);
+  const selectedScore = scoreTrainingWindow_(trainee, smartWindow);
+  const firstAverage = selectedScore.firstPeriod.count > 0 ? selectedScore.firstPeriod.sum / selectedScore.firstPeriod.count : 0;
+  const secondAverage = selectedScore.secondPeriod.count > 0 ? selectedScore.secondPeriod.sum / selectedScore.secondPeriod.count : 0;
+  const overallAverage = selectedScore.overall.count > 0 ? selectedScore.overall.sum / selectedScore.overall.count : 0;
+  const improvement = selectedScore.secondPeriod.count > 0 && selectedScore.firstPeriod.count > 0 ? secondAverage - firstAverage : 0;
+  const smartApplied = smartWindow.reason !== "official" && selectedScore.overall.count > officialScore.overall.count;
+
+  return {
+    key: Utilities.base64EncodeWebSafe(String(trainee.userId || trainee.name || "")).slice(0, 18),
+    userId: trainee.userId || "",
+    name: trainee.name || `User ID ${trainee.userId || "-"}`,
+    startDate: smartWindow.startDate ? formatDateDMY_(smartWindow.startDate) : "-",
+    trainingEndDate: smartWindow.endDate ? formatDateDMY_(smartWindow.endDate) : "-",
+    originalStartDate: startDate ? formatDateDMY_(startDate) : "-",
+    originalTrainingEndDate: officialWindow.endDate ? formatDateDMY_(officialWindow.endDate) : "-",
+    activeDays: selectedScore.activeDays,
+    count: selectedScore.overall.count,
+    average: round1_(overallAverage),
+    first30Average: round1_(firstAverage),
+    first30Count: selectedScore.firstPeriod.count,
+    second30Average: round1_(secondAverage),
+    second30Count: selectedScore.secondPeriod.count,
+    improvement: round1_(improvement),
+    trend: improvement > 0 ? "ดีขึ้น" : improvement < 0 ? "ลดลง" : "ทรงตัว/ข้อมูลยังไม่พอ",
+    matchedFrom: Object.keys(trainee.matchedFrom || {}).slice(0, 8),
+    smartApplied: smartApplied,
+    smartReason: smartWindow.reason,
+    smartNote: smartApplied ? getSmartTrainingNote_(smartWindow.reason) : "",
+  };
+}
+
+function createTrainingWindow_(startDate, endDate, reason) {
+  const safeStartDate = startDate || null;
+  const twoMonthEndDate = safeStartDate ? addMonths_(safeStartDate, 2) : endDate || null;
+  const finalEndDate = minDate_(endDate || twoMonthEndDate, twoMonthEndDate) || endDate || twoMonthEndDate || null;
+
+  return {
+    startDate: safeStartDate,
+    endDate: finalEndDate,
+    day30EndDate: safeStartDate ? addDays_(safeStartDate, 29) : null,
+    reason: reason || "official",
+  };
+}
+
+function scoreTrainingWindow_(trainee, windowInfo) {
+  const overall = createBucket_();
+  const firstPeriod = createBucket_();
+  const secondPeriod = createBucket_();
+  let activeDays = 0;
+
+  Object.keys(trainee.daily || {}).forEach((dateKey) => {
+    const date = parseInputDate_(dateKey);
+
+    if (!date || (windowInfo.startDate && date < windowInfo.startDate) || (windowInfo.endDate && date > windowInfo.endDate)) {
+      return;
+    }
+
+    const bucket = trainee.daily[dateKey];
+
+    if (Number(bucket.count || 0) <= 0) {
+      return;
+    }
+
+    activeDays += 1;
+    mergeBucket_(overall, bucket);
+
+    if (windowInfo.day30EndDate && date <= windowInfo.day30EndDate) {
+      mergeBucket_(firstPeriod, bucket);
+    } else {
+      mergeBucket_(secondPeriod, bucket);
+    }
+  });
+
+  return {
+    overall: overall,
+    firstPeriod: firstPeriod,
+    secondPeriod: secondPeriod,
+    activeDays: activeDays,
+  };
+}
+
+function chooseSmartTrainingWindow_(trainee, officialWindow, officialScore) {
+  let bestWindow = officialWindow;
+  let bestScore = officialScore;
+  const startCandidates = normalizeDateCandidateList_(trainee.startDateCandidates || (trainee.startDate ? [trainee.startDate] : []));
+  const endCandidates = normalizeDateCandidateList_(trainee.endDateCandidates || (trainee.endDate ? [trainee.endDate] : []));
+  const candidateStarts = startCandidates.length > 0 ? startCandidates : (trainee.startDate ? [trainee.startDate] : []);
+  const candidateEnds = endCandidates.length > 0 ? endCandidates : [null];
+
+  candidateStarts.forEach((candidateStart) => {
+    candidateEnds.forEach((candidateEnd) => {
+      const windowInfo = createTrainingWindow_(candidateStart, candidateEnd, "date-candidate");
+      const score = scoreTrainingWindow_(trainee, windowInfo);
+
+      if (isBetterTrainingWindow_(score, bestScore, windowInfo, bestWindow)) {
+        bestWindow = windowInfo;
+        bestScore = score;
+      }
+    });
+  });
+
+  const dailyKeys = Object.keys(trainee.daily || {}).sort();
+
+  // ถ้าวันเริ่ม/วันจบจาก Update name ไม่กินข้อมูลเลย แต่ User ID มีข้อมูลจริง
+  // ให้ใช้วันแรกที่เจอใน Results Master เป็นหน้าต่าง fallback ชั่วคราว เพื่อไม่ให้การ์ดเป็น 0 โดยไม่รู้สาเหตุ
+  if (bestScore.overall.count <= 0 && dailyKeys.length > 0) {
+    const firstWorkDate = parseInputDate_(dailyKeys[0]);
+    const fallbackWindow = createTrainingWindow_(firstWorkDate, firstWorkDate ? addMonths_(firstWorkDate, 2) : null, "first-result-date");
+    const fallbackScore = scoreTrainingWindow_(trainee, fallbackWindow);
+
+    if (fallbackScore.overall.count > bestScore.overall.count) {
+      bestWindow = fallbackWindow;
+      bestScore = fallbackScore;
+    }
+  }
+
+  return bestWindow;
+}
+
+function isBetterTrainingWindow_(score, bestScore, windowInfo, bestWindow) {
+  const countDiff = Number(score.overall.count || 0) - Number(bestScore.overall.count || 0);
+
+  if (countDiff !== 0) {
+    return countDiff > 0;
+  }
+
+  const dayDiff = Number(score.activeDays || 0) - Number(bestScore.activeDays || 0);
+
+  if (dayDiff !== 0) {
+    return dayDiff > 0;
+  }
+
+  if (!windowInfo.startDate || !bestWindow.startDate) {
+    return false;
+  }
+
+  return windowInfo.startDate < bestWindow.startDate;
+}
+
+function getSmartTrainingNote_(reason) {
+  if (reason === "date-candidate") {
+    return "ระบบเลือกช่วงวันที่ที่มีข้อมูลจริงให้ เพราะวันใน Update name อาจสลับ D/M กับ M/D";
+  }
+
+  if (reason === "first-result-date") {
+    return "ระบบใช้วันแรกที่พบ Productivity ใน Results Master เป็นช่วงอ้างอิงชั่วคราว";
   }
 
   return "";
 }
 
-function findCategoryHeaderIndexes_(headers) {
-  const aliases = [
-    "Type",
-    "Pick Type",
-    "Picking Type",
-    "Rack Type",
-    "Storage Type",
-    "Area",
-    "Zone",
-    "Location Type",
-    "Location",
-    "Category",
-    "ประเภท",
-    "ประเภทงาน",
-    "โซน",
-    "พื้นที่",
-  ];
-  const indexes = [];
-
-  headers.forEach((header, index) => {
-    const normalizedHeader = normalizeHeader_(header);
-    const matched = aliases.some((alias) => normalizedHeader === normalizeHeader_(alias));
-
-    if (matched) {
-      indexes.push(index);
-    }
-  });
-
-  return indexes;
+function mergeBucket_(target, source) {
+  target.sum += Number(source && source.sum || 0);
+  target.count += Number(source && source.count || 0);
 }
 
-function parseNumber_(value) {
-  if (typeof value === "number") {
-    return value;
+function minDate_(left, right) {
+  if (!left) return right || null;
+  if (!right) return left || null;
+  return left < right ? left : right;
+}
+
+function addDays_(date, days) {
+  const result = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
+function addMonths_(date, months) {
+  const result = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  result.setMonth(result.getMonth() + months);
+  return result;
+}
+
+function createShiftSummary_() {
+  return {};
+}
+
+function addShiftValue_(shiftSummary, shiftValue, affiliationValue, average) {
+  const shiftName = normalizeGroupLabel_(shiftValue, "ไม่ระบุกะ");
+  const affiliationName = normalizeGroupLabel_(affiliationValue, "ไม่ระบุสังกัด");
+
+  if (!shiftSummary[shiftName]) {
+    shiftSummary[shiftName] = {
+      bucket: createBucket_(),
+      affiliations: {},
+    };
   }
 
-  const normalized = String(value || "")
+  addValue_(shiftSummary[shiftName].bucket, average);
+
+  if (!shiftSummary[shiftName].affiliations[affiliationName]) {
+    shiftSummary[shiftName].affiliations[affiliationName] = createBucket_();
+  }
+
+  addValue_(shiftSummary[shiftName].affiliations[affiliationName], average);
+}
+
+function finalizeShifts_(shiftSummary) {
+  const shiftNames = Object.keys(shiftSummary).sort((left, right) => left.localeCompare(right, "th"));
+  const totalCount = shiftNames.reduce((sum, shiftName) => sum + shiftSummary[shiftName].bucket.count, 0);
+
+  return shiftNames.map((shiftName, index) => {
+    const item = shiftSummary[shiftName];
+    const affiliationNames = Object.keys(item.affiliations).sort((left, right) => {
+      const countDiff = item.affiliations[right].count - item.affiliations[left].count;
+      return countDiff || left.localeCompare(right, "th");
+    });
+
+    return {
+      key: `shift${index + 1}`,
+      title: `Shift ${shiftName}`,
+      label: shiftName,
+      share: totalCount > 0 ? round1_((item.bucket.count / totalCount) * 100) : 0,
+      affiliations: affiliationNames.map((affiliationName, affiliationIndex) => ({
+        key: `shift${index + 1}_affiliation${affiliationIndex + 1}`,
+        title: affiliationName,
+        label: affiliationName,
+        ...finalizeBucket_(item.affiliations[affiliationName], TARGETS.overall),
+      })),
+      ...finalizeBucket_(item.bucket, TARGETS.overall),
+    };
+  });
+}
+
+function normalizeGroupLabel_(value, fallback) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text || fallback;
+}
+
+function createZoneSummary_() {
+  const summary = {};
+
+  ZONE_GROUPS.forEach((group) => {
+    summary[group.key] = {};
+
+    group.zones.forEach((zone) => {
+      summary[group.key][zone.key] = createBucket_();
+    });
+  });
+
+  return summary;
+}
+
+function finalizeZones_(zoneSummary) {
+  return ZONE_GROUPS.map((group) => ({
+    key: group.key,
+    title: group.title,
+    target: group.target,
+    zones: group.zones.map((zone) => ({
+      key: zone.key,
+      title: zone.title,
+      label: zone.label,
+      mainKpi: typeof zone.mainKpi === "number" ? zone.mainKpi : null,
+      ...finalizeBucket_(zoneSummary[group.key][zone.key], group.target),
+    })),
+  }));
+}
+
+function createBuSummary_() {
+  return BU_GROUPS.reduce((summary, bu) => {
+    const bucket = createBucket_();
+    bucket.details = createPickTypeDetailSummary_();
+    summary[bu.key] = bucket;
+    return summary;
+  }, {});
+}
+
+function createPickTypeDetailSummary_() {
+  return PICK_TYPE_DETAILS.reduce((summary, detail) => {
+    summary[detail.key] = createBucket_();
+    return summary;
+  }, {});
+}
+
+function finalizeBu_(buSummary) {
+  const totalCount = BU_GROUPS.reduce((sum, bu) => sum + (buSummary[bu.key] ? buSummary[bu.key].count : 0), 0);
+
+  return BU_GROUPS.map((bu) => {
+    const bucket = buSummary[bu.key] || createBucket_();
+    const result = finalizeBucket_(bucket, TARGETS.overall);
+
+    return {
+      key: bu.key,
+      title: bu.title,
+      label: bu.label,
+      focus: bu.focus,
+      share: totalCount > 0 ? round1_((bucket.count / totalCount) * 100) : 0,
+      details: finalizeBuDetails_(bu, bucket.details || createPickTypeDetailSummary_()),
+      ...result,
+    };
+  });
+}
+
+function finalizeBuDetails_(bu, detailSummary) {
+  if (!bu.focus) {
+    return [];
+  }
+
+  const mix = bu.pickMix || {};
+
+  return PICK_TYPE_DETAILS.map((detail) => ({
+    key: detail.key,
+    title: detail.title,
+    label: detail.label,
+    mainKpi: typeof mix[detail.key] === "number" ? mix[detail.key] : null,
+    ...finalizeBucket_(detailSummary[detail.key] || createBucket_(), detail.target),
+  }));
+}
+
+function normalizeBu_(value) {
+  const text = String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
+
+  if (!text) {
+    return "other";
+  }
+
+  for (let index = 0; index < BU_GROUPS.length; index += 1) {
+    const bu = BU_GROUPS[index];
+
+    if (!bu.match || bu.match.length === 0) {
+      continue;
+    }
+
+    const isMatched = bu.match.some((keyword) => text.includes(keyword));
+
+    if (isMatched) {
+      return bu.key;
+    }
+  }
+
+  return "other";
+}
+
+function findZoneMatch_(position) {
+  const codes = extractPositionCodes_(position);
+
+  if (codes.length === 0) {
+    return null;
+  }
+
+  for (let groupIndex = 0; groupIndex < ZONE_GROUPS.length; groupIndex += 1) {
+    const group = ZONE_GROUPS[groupIndex];
+
+    for (let zoneIndex = 0; zoneIndex < group.zones.length; zoneIndex += 1) {
+      const zone = group.zones[zoneIndex];
+      const isMatched = codes.some((code) => zone.codes.indexOf(code) >= 0);
+
+      if (isMatched) {
+        return {
+          groupKey: group.key,
+          zoneKey: zone.key,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function extractPositionCodes_(position) {
+  const text = String(position || "").toUpperCase().trim();
+
+  if (!text) {
+    return [];
+  }
+
+  const matches = text.match(/[A-Z]{2}/g) || [];
+
+  if (matches.length > 0) {
+    return matches;
+  }
+
+  return text.length >= 2 ? [text.slice(0, 2)] : [];
+}
+
+function saveDailyIndexPayload_(cacheKey, payload) {
+  const text = JSON.stringify(payload);
+
+  try {
+    CacheService.getScriptCache().put(cacheKey, text, CACHE_SECONDS);
+  } catch (error) {
+    // Daily index อาจใหญ่เกิน CacheService ได้ ให้ response รอบนี้ยังส่งกลับได้ ไม่ต้องเขียน PropertiesService
+  }
+}
+
+function saveDashboardPayload_(cacheKey, payload) {
+  const text = JSON.stringify(payload);
+
+  try {
+    CacheService.getScriptCache().put(cacheKey, text, CACHE_SECONDS);
+  } catch (error) {
+    // ถ้า payload ใหญ่เกิน cache ให้ข้ามการเขียน cache ไม่โยน error กลับหน้าเว็บ
+  }
+}
+
+function clearDashboardPropertiesQuota() {
+  // ใช้รันครั้งเดียวใน Apps Script เพื่อเคลียร์ property cache เก่าที่เคยทำให้ quota เต็ม
+  const properties = PropertiesService.getScriptProperties();
+  const all = properties.getProperties();
+  const keys = Object.keys(all).filter((key) => (
+    key.indexOf("LAST_DASHBOARD_") === 0 ||
+    key.indexOf("pick_dashboard") === 0 ||
+    key.indexOf("DASHBOARD") >= 0
+  ));
+
+  keys.forEach((key) => properties.deleteProperty(key));
+
+  return `ลบ Dashboard properties เก่าแล้ว ${keys.length} รายการ`;
+}
+
+
+function getCacheKey_(startDate, endDate) {
+  return [
+    `pick_dashboard_${CACHE_VERSION}`,
+    startDate || "all",
+    endDate || "all",
+  ].join("_");
+}
+
+function isUsableDashboardPayload_(payload) {
+  return Boolean(
+    payload
+      && payload.cacheVersion === CACHE_VERSION
+      && payload.overall
+      && payload.categories
+      && Array.isArray(payload.zones)
+      && Array.isArray(payload.bu)
+      && Array.isArray(payload.shifts)
+      && Array.isArray(payload.training)
+  );
+}
+
+function getCacheAgeSeconds_(generatedAt) {
+  const generatedTime = new Date(generatedAt || 0).getTime();
+
+  if (!Number.isFinite(generatedTime) || generatedTime <= 0) {
+    return 0;
+  }
+
+  return Math.max(Math.round((Date.now() - generatedTime) / 1000), 0);
+}
+
+function createBucket_() {
+  return {
+    sum: 0,
+    count: 0,
+    average: 0,
+  };
+}
+
+function addValue_(bucket, value) {
+  bucket.sum += value;
+  bucket.count += 1;
+}
+
+function finalizeBucket_(bucket, target, totalRows, excludedCount) {
+  const average = bucket.count > 0 ? bucket.sum / bucket.count : 0;
+  const gap = average - target;
+
+  return {
+    average: round1_(average),
+    count: bucket.count,
+    validCount: bucket.count,
+    totalRows: totalRows || bucket.count,
+    excludedCount: excludedCount || 0,
+    target: target,
+    gap: round1_(gap),
+    status: average >= target ? "ผ่าน Target" : "ต่ำกว่า Target",
+  };
+}
+
+function emptyPayload_(startedAt, startDateText, endDateText) {
+  return {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    elapsedMs: Date.now() - startedAt,
+    cacheStatus: "fresh",
+    cacheVersion: CACHE_VERSION,
+    range: {
+      startDate: startDateText || "",
+      endDate: endDateText || "",
+    },
+    overall: finalizeBucket_(createBucket_(), TARGETS.overall, 0, 0),
+    categories: {
+      fullRack: finalizeBucket_(createBucket_(), TARGETS.fullRack),
+      halfRack: finalizeBucket_(createBucket_(), TARGETS.halfRack),
+      ea: finalizeBucket_(createBucket_(), TARGETS.ea),
+    },
+    zones: finalizeZones_(createZoneSummary_()),
+    bu: finalizeBu_(createBuSummary_()),
+    shifts: [],
+    training: [],
+    totalRows: 0,
+    filteredRows: 0,
+    filterDiagnostics: {
+      enabled: Boolean(startDateText || endDateText),
+      sourceColumn: "C",
+      sourceFormat: "DD/MM/YYYY",
+      inputStartDate: startDateText || "",
+      inputEndDate: endDateText || "",
+      emptyDateRows: 0,
+      invalidDateRows: 0,
+      beforeStartRows: 0,
+      afterEndRows: 0,
+      matchedDateRows: 0,
+      firstMatchedDate: "",
+      lastMatchedDate: "",
+      firstInvalidSamples: [],
+    },
+    excludedSamples: [],
+  };
+}
+
+function normalizePickType_(value) {
+  const text = String(value || "").toLowerCase().trim();
+
+  if (!text) {
+    return "";
+  }
+
+  if (text.includes("full")) {
+    return "fullRack";
+  }
+
+  if (text.includes("half") || text.includes("haft")) {
+    return "halfRack";
+  }
+
+  if (text === "ea" || text.includes("ea")) {
+    return "ea";
+  }
+
+  return "";
+}
+
+function toNumber_(value) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  const text = String(value || "")
     .replace(/,/g, "")
     .replace(/%/g, "")
     .trim();
 
-  if (!normalized) {
-    return NaN;
+  if (!text || text.toLowerCase() === "not count") {
+    return 0;
   }
 
-  return Number(normalized);
+  const number = Number(text);
+  return Number.isFinite(number) ? number : 0;
 }
 
-function parseDateInput_(value, endOfDay) {
-  if (!value) {
-    return null;
-  }
-
-  const parts = String(value).split("-").map(Number);
-
-  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) {
-    return null;
-  }
-
-  const date = new Date(parts[0], parts[1] - 1, parts[2]);
-
-  if (endOfDay) {
-    date.setHours(23, 59, 59, 999);
-  }
-
-  return date;
+function getDateCandidates_(rawValue, displayValue) {
+  const candidates = [];
+  addDateCandidate_(candidates, normalizeDate_(rawValue, "DMY"));
+  addDateCandidate_(candidates, normalizeDate_(displayValue, "DMY"));
+  addDateCandidate_(candidates, normalizeDate_(displayValue, "MDY"));
+  addDateCandidate_(candidates, normalizeDate_(rawValue, "MDY"));
+  return candidates;
 }
 
-function parseFlexibleDate_(value) {
-  if (value instanceof Date) {
-    return value;
+function addDateCandidate_(target, date) {
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    return;
   }
 
-  const text = String(value || "").trim();
+  const key = formatDateISO_(date);
+  const exists = target.some((item) => formatDateISO_(item) === key);
+
+  if (!exists) {
+    target.push(date);
+  }
+}
+
+function normalizeDateCandidateList_(items) {
+  const result = [];
+  (items || []).forEach((item) => addDateCandidate_(result, normalizeSheetDate_(item, item)));
+  return result;
+}
+
+function mergeDateCandidateLists_(left, right) {
+  const result = normalizeDateCandidateList_(left || []);
+  (right || []).forEach((item) => addDateCandidate_(result, normalizeSheetDate_(item, item)));
+  return result;
+}
+
+function normalizeSheetDate_(rawValue, displayValue) {
+  // สำคัญ: ให้ยึด raw Date จาก Google Sheet ก่อน เพราะ display บางไฟล์เป็น M/D/YYYY
+  // ถ้า parse display เป็น DMY จะทำให้ 01/07/2026 กลายเป็น 1 ก.ค. ทั้งที่ข้อมูลจริงอาจเป็น 7 ม.ค.
+  const rawDate = normalizeDate_(rawValue, "DMY");
+
+  if (rawDate) {
+    return rawDate;
+  }
+
+  return normalizeDate_(displayValue, "DMY");
+}
+
+function normalizeDate_(value, preferredFormat) {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  }
+
+  if (typeof value === "number" && Number.isFinite(value) && value > 20000) {
+    const millis = Math.round((value - 25569) * 86400 * 1000);
+    const parsedSerial = new Date(millis);
+
+    if (!isNaN(parsedSerial.getTime())) {
+      return new Date(parsedSerial.getFullYear(), parsedSerial.getMonth(), parsedSerial.getDate());
+    }
+  }
+
+  const text = String(value || "")
+    .trim()
+    .replace(/[.]/g, "/")
+    .replace(/\s+/g, " ");
 
   if (!text) {
     return null;
   }
 
-  const isoMatch = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  const datePart = text.split(" ")[0];
+  const isoMatch = datePart.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
 
   if (isoMatch) {
-    return new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
+    return createDate_(Number(isoMatch[1]), Number(isoMatch[2]), Number(isoMatch[3]));
   }
 
-  const thaiDateMatch = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
+  const slashMatch = datePart.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
 
-  if (thaiDateMatch) {
-    let year = Number(thaiDateMatch[3]);
+  if (slashMatch) {
+    const first = Number(slashMatch[1]);
+    const second = Number(slashMatch[2]);
+    const year = Number(slashMatch[3]);
 
-    if (year < 100) {
-      year += 2000;
+    if (preferredFormat === "DMY") {
+      return createDate_(year, second, first);
     }
 
-    if (year > 2400) {
-      year -= 543;
+    if (preferredFormat === "MDY") {
+      return createDate_(year, first, second);
     }
 
-    return new Date(year, Number(thaiDateMatch[2]) - 1, Number(thaiDateMatch[1]));
+    if (first > 12 && second <= 12) {
+      return createDate_(year, second, first);
+    }
+
+    if (second > 12 && first <= 12) {
+      return createDate_(year, first, second);
+    }
+
+    return createDate_(year, second, first);
   }
 
   const parsed = new Date(text);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
 
-function isWithinDateRange_(rowDate, startDate, endDate) {
-  if (!startDate && !endDate) {
-    return true;
+  if (!isNaN(parsed.getTime())) {
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
   }
 
-  if (!rowDate) {
-    return false;
+  return null;
+}
+
+function parseInputDate_(value) {
+  return normalizeDate_(value, "input");
+}
+
+function formatDateDMY_(date) {
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    return "";
   }
 
-  if (startDate && rowDate < startDate) {
-    return false;
-  }
-
-  if (endDate && rowDate > endDate) {
-    return false;
-  }
-
-  return true;
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
 }
 
-function roundNumber_(value, digits) {
-  const factor = Math.pow(10, digits || 0);
-  return Math.round(value * factor) / factor;
-}
-
-function buildCompactResultsPayload_(params) {
-  const sheet = getResultsSheet_();
-  const lastRow = sheet.getLastRow();
-  const lastColumn = sheet.getLastColumn();
-
-  if (lastRow < 2 || lastColumn < 1) {
-    return buildEmptyPayload_("compact");
-  }
-
-  const headerRow = sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0];
-  const columnIndexes = COMPACT_COLUMNS
-    .map((columnName) => findHeaderIndex_(headerRow, columnName))
-    .filter((index) => index >= 0);
-
-  if (columnIndexes.length === 0) {
-    return buildFullResultsPayload_(params);
-  }
-
-  const minColumnIndex = Math.min.apply(null, columnIndexes);
-  const maxColumnIndex = Math.max.apply(null, columnIndexes);
-  const rowCount = lastRow - 1;
-  const compactValues = sheet
-    .getRange(2, minColumnIndex + 1, rowCount, maxColumnIndex - minColumnIndex + 1)
-    .getDisplayValues();
-
-  const labels = [];
-
-  compactValues.forEach((rowValues) => {
-    const row = {};
-    let hasData = false;
-
-    COMPACT_COLUMNS.forEach((columnName) => {
-      const absoluteIndex = findHeaderIndex_(headerRow, columnName);
-
-      if (absoluteIndex < 0) {
-        row[columnName] = "";
-        return;
-      }
-
-      const value = rowValues[absoluteIndex - minColumnIndex] || "";
-      row[columnName] = value;
-
-      if (value !== "") {
-        hasData = true;
-      }
-    });
-
-    if (hasData) {
-      labels.push(buildCompactLabel_(row));
-    }
-  });
-
-  const page = paginate_(labels, params);
-
-  return {
-    ok: true,
-    mode: "compact",
-    spreadsheetId: SPREADSHEET_ID,
-    sheetName: SHEET_NAME,
-    total: labels.length,
-    offset: page.offset,
-    count: page.data.length,
-    data: page.data,
-  };
-}
-
-function buildFullResultsPayload_(params) {
-  const sheet = getResultsSheet_();
-  const lastRow = sheet.getLastRow();
-  const lastColumn = sheet.getLastColumn();
-
-  if (lastRow < 2 || lastColumn < 1) {
-    return buildEmptyPayload_("full");
-  }
-
-  const range = sheet.getRange(1, 1, lastRow, lastColumn);
-  const displayValues = range.getDisplayValues();
-  const rawValues = range.getValues();
-  const headers = makeUniqueHeaders_(displayValues[0]);
-  const useRawValues = String(params.raw || "").toLowerCase() === "true";
-  const sourceValues = useRawValues ? rawValues : displayValues;
-  const rows = [];
-
-  for (let rowIndex = 1; rowIndex < sourceValues.length; rowIndex += 1) {
-    const displayRow = displayValues[rowIndex];
-
-    if (displayRow.every((cell) => cell === "")) {
-      continue;
-    }
-
-    const row = {};
-
-    headers.forEach((header, columnIndex) => {
-      const value = useRawValues
-        ? normalizeValue_(sourceValues[rowIndex][columnIndex])
-        : displayRow[columnIndex];
-
-      row[header] = value;
-    });
-
-    rows.push(row);
-  }
-
-  const page = paginate_(rows, params);
-
-  return {
-    ok: true,
-    mode: "full",
-    spreadsheetId: SPREADSHEET_ID,
-    sheetName: SHEET_NAME,
-    total: rows.length,
-    offset: page.offset,
-    count: page.data.length,
-    data: page.data,
-  };
-}
-
-function getResultsSheet_() {
-  const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = spreadsheet.getSheetByName(SHEET_NAME);
-
-  if (!sheet) {
-    throw new Error(`Sheet not found: ${SHEET_NAME}`);
-  }
-
-  return sheet;
-}
-
-function buildEmptyPayload_(mode) {
-  return {
-    ok: true,
-    mode,
-    spreadsheetId: SPREADSHEET_ID,
-    sheetName: SHEET_NAME,
-    total: 0,
-    count: 0,
-    data: [],
-  };
-}
-
-function findHeaderIndex_(headerRow, headerName) {
-  const target = normalizeHeader_(headerName);
-
-  return headerRow.findIndex((header) => normalizeHeader_(header) === target);
-}
-
-function findFirstHeaderIndex_(headerRow, headerNames) {
-  for (let index = 0; index < headerNames.length; index += 1) {
-    const foundIndex = findHeaderIndex_(headerRow, headerNames[index]);
-
-    if (foundIndex >= 0) {
-      return foundIndex;
-    }
-  }
-
-  return -1;
-}
-
-function normalizeHeader_(header) {
-  return String(header || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-}
-
-function normalizeCategoryText_(text) {
-  return String(text || "")
-    .toLowerCase()
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function buildCompactLabel_(row) {
-  return [
-    row.Name,
-    row.Date && `Date: ${row.Date}`,
-    row["User ID"] && `User ID: ${row["User ID"]}`,
-    row["Total pick"] && `Total pick: ${row["Total pick"]}`,
-  ].filter(Boolean).join(" | ");
-}
-
-function paginate_(rows, params) {
-  const offset = Math.max(Number(params.offset || 0), 0);
-  const requestedLimit = Number(params.limit || rows.length);
-  const limit = Number.isFinite(requestedLimit)
-    ? Math.max(requestedLimit, 0)
-    : rows.length;
-
-  return {
-    offset,
-    data: rows.slice(offset, offset + limit),
-  };
-}
-
-function makeUniqueHeaders_(headerRow) {
-  const seen = {};
-
-  return headerRow.map((header, index) => {
-    const baseName = String(header || `Column ${index + 1}`).trim();
-    seen[baseName] = (seen[baseName] || 0) + 1;
-
-    if (seen[baseName] === 1) {
-      return baseName;
-    }
-
-    return `${baseName}_${seen[baseName]}`;
-  });
-}
-
-function normalizeValue_(value) {
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-
-  if (value === undefined) {
+function createDate_(year, month, day) {
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
     return null;
   }
 
-  return value;
+  let normalizedYear = year;
+
+  if (normalizedYear < 100) {
+    normalizedYear += 2000;
+  }
+
+  if (normalizedYear > 2400) {
+    normalizedYear -= 543;
+  }
+
+  const date = new Date(normalizedYear, month - 1, day);
+
+  if (
+    date.getFullYear() !== normalizedYear
+      || date.getMonth() !== month - 1
+      || date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function round1_(value) {
+  return Math.round((Number(value) || 0) * 10) / 10;
+}
+
+function isTrue_(value) {
+  return String(value || "").toLowerCase() === "true";
+}
+
+function jsonOutput_(data, callback) {
+  const text = JSON.stringify(data);
+
+  if (isSafeCallbackName_(callback)) {
+    return ContentService
+      .createTextOutput(`${callback}(${text});`)
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+
+  return ContentService
+    .createTextOutput(text)
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function isSafeCallbackName_(callback) {
+  return /^[A-Za-z_$][0-9A-Za-z_$]*(\.[A-Za-z_$][0-9A-Za-z_$]*)*$/.test(String(callback || ""));
+}
+
+function installDashboardRefreshTrigger() {
+  const triggers = ScriptApp.getProjectTriggers();
+
+  triggers.forEach((trigger) => {
+    const handler = trigger.getHandlerFunction();
+
+    if (handler === "warmDashboardCache") {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+
+  ScriptApp.newTrigger("warmDashboardCache")
+    .timeBased()
+    .everyMinutes(1)
+    .create();
+
+  warmDashboardCache();
+}
+
+function warmDashboardCache() {
+  const lock = LockService.getScriptLock();
+
+  if (!lock.tryLock(500)) {
+    return;
+  }
+
+  try {
+    const payload = buildDashboardPayload_("", "");
+    saveDashboardPayload_(getCacheKey_("", ""), payload);
+  } finally {
+    lock.releaseLock();
+  }
 }
