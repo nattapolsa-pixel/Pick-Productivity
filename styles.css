@@ -23,8 +23,8 @@
   /* Status */
   --good:          #22C55E;
   --good-dim:      rgba(34,197,94,.12);
-  --warn:          #F59E0B;
-  --warn-dim:      rgba(245,158,11,.12);
+  --warn:          #EF4444;
+  --warn-dim:      rgba(239,68,68,.14);
   --empty:         #64748B;
   --empty-dim:     rgba(100,116,139,.12);
 
@@ -44,6 +44,30 @@
   --radius:      10px;
   --radius-sm:   6px;
 }
+
+/* Light theme variables */
+:root.light {
+  --bg-base:       #FFFFFF;
+  --bg-surface:    #F8FAFF;
+  --bg-raised:     #FFFFFF;
+  --bg-hover:      #F1F5F9;
+  --border-subtle: rgba(2,6,23,.06);
+  --border-mid:    rgba(2,6,23,.08);
+  --text-primary:  #0B1220;
+  --text-secondary:#334155;
+  --text-muted:    #6B7280;
+  --text-accent:   #1A6CF6;
+}
+
+/* Smooth micro-interactions */
+* { transition: background-color .18s ease, color .18s ease, border-color .18s ease, box-shadow .18s ease; }
+.chip, .btn-apply, .btn-refresh, .btn-target, .nav-item { transition: transform .12s ease, box-shadow .12s ease; }
+.chip:active, .btn-apply:active, .btn-refresh:active, .btn-target:active { transform: translateY(1px) scale(.998); }
+.nav-item { transition: transform .14s cubic-bezier(.2,.9,.2,1), box-shadow .14s; }
+.nav-item:hover { transform: translateY(-3px); }
+
+/* Animated numeric counters */
+.count-animate { transition: transform .24s ease; will-change: transform; }
 
 html { scroll-behavior: smooth; }
 
@@ -577,6 +601,73 @@ body.target-modal-open { overflow: hidden; }
   padding-top: .2rem;
 }
 
+
+/* ─── ACTIVE DATE BANNER ─────────────────────────────── */
+.active-date-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: -0.25rem 0 1.15rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid rgba(96,165,250,.38);
+  border-left: 5px solid var(--blue);
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, rgba(26,108,246,.22), rgba(15,23,42,.72));
+  box-shadow: 0 18px 42px rgba(0,0,0,.2), 0 0 0 1px rgba(26,108,246,.08) inset;
+}
+
+.active-date-banner.is-fallback {
+  border-color: rgba(245,158,11,.45);
+  border-left-color: var(--warn);
+  background: linear-gradient(135deg, rgba(245,158,11,.16), rgba(15,23,42,.72));
+}
+
+.active-date-eyebrow {
+  display: block;
+  color: var(--text-secondary);
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  margin-bottom: .25rem;
+}
+
+.active-date-banner strong {
+  display: block;
+  color: #fff;
+  font-size: clamp(1.75rem, 3.2vw, 3rem);
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: -.02em;
+}
+
+.active-date-hint {
+  flex: 0 0 auto;
+  max-width: 360px;
+  color: var(--text-secondary);
+  font-size: .9rem;
+  font-weight: 700;
+  text-align: right;
+  line-height: 1.45;
+}
+
+.active-date-banner.is-fallback .active-date-hint {
+  color: #FCD34D;
+}
+
+@media (max-width: 720px) {
+  .active-date-banner {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .active-date-hint {
+    max-width: none;
+    text-align: left;
+  }
+}
+
 /* ─── KPI TRIO (OVERVIEW) ────────────────────────────── */
 .kpi-trio {
   display: grid;
@@ -1097,7 +1188,7 @@ body.target-modal-open { overflow: hidden; }
 }
 
 .present-brief-card.is-highlight .present-list li::before { background: var(--good); box-shadow: 0 0 10px rgba(34,197,94,.35); }
-.present-brief-card.is-risk .present-list li::before { background: var(--warn); box-shadow: 0 0 10px rgba(245,158,11,.35); }
+.present-brief-card.is-risk .present-list li::before { background: var(--warn); box-shadow: 0 0 10px rgba(239,68,68,.35); }
 
 @media (max-width: 1280px) {
   .present-kpi-grid {
@@ -1563,7 +1654,7 @@ body.target-modal-open { overflow: hidden; }
   right: .9rem;
 }
 .zone-summary-dot.good { background: var(--good); box-shadow: 0 0 10px rgba(34,197,94,.35); }
-.zone-summary-dot.warn { background: var(--warn); box-shadow: 0 0 10px rgba(245,158,11,.35); }
+.zone-summary-dot.warn { background: var(--warn); box-shadow: 0 0 10px rgba(239,68,68,.35); }
 .zone-summary-dot.all { background: var(--blue); box-shadow: 0 0 10px var(--blue-glow); }
 .zone-summary-divider { display: none; }
 
@@ -2756,3 +2847,646 @@ body.loading-open { overflow: hidden; }
 .skeleton-card small { height: 12px; }
 .snapshot-card.skeleton-card { min-height: 82px; }
 .category-card.skeleton-card, .shift-card.skeleton-card, .training-card.skeleton-card, .bu-card.skeleton-card, .zone-card.skeleton-card { min-height: 72px; }
+
+/* ========================================================
+   Picker ranking layer
+   ======================================================== */
+.snapshot-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.snapshot-card.is-person strong {
+  font-family: var(--font-body);
+  font-size: clamp(1rem, 1.2vw, 1.28rem);
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+}
+
+.picker-panel-header {
+  align-items: end;
+}
+
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.picker-board {
+  min-width: 0;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.018));
+  box-shadow: 0 18px 55px rgba(0,0,0,.18);
+  overflow: hidden;
+}
+
+.picker-board.is-top { border-top: 3px solid var(--good); }
+.picker-board.is-bottom { border-top: 3px solid var(--warn); }
+.picker-board.is-empty { padding: 1rem; }
+
+.picker-board-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  padding: 1rem 1rem .8rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.picker-board-head small {
+  display: block;
+  margin-top: .25rem;
+  color: var(--text-secondary);
+  font-size: .75rem;
+}
+
+.picker-list {
+  display: grid;
+  gap: .7rem;
+  padding: .85rem;
+}
+
+.picker-row {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr) 7rem;
+  gap: .85rem;
+  align-items: center;
+  padding: .85rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,.035);
+}
+
+.picker-row.is-good { border-left: 3px solid var(--good); }
+.picker-row.is-warning { border-left: 3px solid var(--warn); }
+.picker-row.is-empty { border-left: 3px solid var(--empty); }
+.picker-row.is-low-sample { background: linear-gradient(90deg, rgba(245,158,11,.08), rgba(255,255,255,.025)); }
+
+.picker-rank {
+  display: grid;
+  place-items: center;
+  min-height: 2.4rem;
+  border-radius: 999px;
+  background: var(--blue-dim);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: .78rem;
+}
+
+.picker-board.is-bottom .picker-rank {
+  background: var(--warn-dim);
+  color: #FBBF24;
+}
+
+.picker-main {
+  min-width: 0;
+  display: grid;
+  gap: .55rem;
+}
+
+.picker-name-line {
+  display: flex;
+  justify-content: space-between;
+  gap: .75rem;
+  align-items: baseline;
+}
+
+.picker-name-line strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.picker-name-line span,
+.picker-meta-line span,
+.picker-score small {
+  color: var(--text-secondary);
+  font-size: .72rem;
+}
+
+.picker-meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+}
+
+.picker-meta-line span {
+  padding: .18rem .45rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: rgba(255,255,255,.035);
+}
+
+.picker-bar-track {
+  height: .45rem;
+  border-radius: 999px;
+  background: rgba(148,163,184,.2);
+  overflow: hidden;
+}
+
+.picker-bar-track i {
+  display: block;
+  height: 100%;
+  min-width: .35rem;
+  border-radius: inherit;
+  background: var(--warn);
+}
+
+.picker-bar-track i.is-good { background: var(--good); }
+.picker-bar-track i.is-empty { background: var(--empty); }
+
+.picker-score {
+  display: grid;
+  gap: .45rem;
+  text-align: right;
+}
+
+.picker-score-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: .18rem;
+  padding: .5rem .75rem;
+  border-radius: 14px;
+  background: rgba(255,255,255,.04);
+}
+
+.picker-score-block-secondary {
+  background: rgba(148,163,184,.12);
+}
+
+.picker-score-block strong {
+  font-family: var(--font-mono);
+  font-size: clamp(1.15rem, 2vw, 1.6rem);
+  line-height: 1;
+  color: var(--text-primary);
+}
+
+.picker-score-block span {
+  font-size: .72rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.picker-score-gap {
+  padding: .35rem .7rem;
+  font-size: .72rem;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.picker-row.is-good .picker-score-gap {
+  color: var(--good);
+  background: rgba(34,197,94,.14);
+}
+
+.picker-row.is-warning .picker-score-gap {
+  color: var(--warn);
+  background: rgba(245,158,11,.14);
+}
+
+.picker-row.is-empty .picker-score-gap {
+  color: var(--empty);
+  background: rgba(100,116,139,.14);
+}
+
+.picker-row.is-good .picker-score-gap {
+  color: var(--good);
+  background: rgba(34,197,94,.12);
+}
+
+.picker-row.is-warning .picker-score-gap {
+  color: var(--warn);
+  background: rgba(245,158,11,.12);
+}
+
+.picker-row.is-empty .picker-score-gap {
+  color: var(--empty);
+  background: rgba(100,116,139,.12);
+}
+
+.picker-empty-state {
+  padding: 1rem;
+  color: var(--text-secondary);
+  border: 1px dashed var(--border-mid);
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,.025);
+}
+
+@media (max-width: 1180px) {
+  .picker-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .picker-row {
+    grid-template-columns: 1fr;
+  }
+
+  .picker-name-line {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: .25rem;
+  }
+
+  .picker-score {
+    text-align: left;
+  }
+}
+
+.present-kpi-card.is-person strong {
+  font-family: var(--font-body);
+  font-size: clamp(1.05rem, 1.4vw, 1.42rem);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+
+/* Overview Total Pick card replaces valid/total row counters */
+.kpi-stat-total {
+  grid-column: span 2;
+  border-left: 4px solid var(--blue);
+  background: linear-gradient(135deg, rgba(26,108,246,.14), var(--bg-surface));
+}
+
+.kpi-stat-total .kpi-stat-icon {
+  color: var(--blue);
+  font-size: 1.55rem;
+}
+
+.kpi-stat-total .kpi-stat-value {
+  font-size: clamp(3.4rem, 5.5vw, 5.2rem);
+}
+
+@media (max-width: 1100px) {
+  .kpi-stat-total { grid-column: 1 / -1; }
+}
+
+/* ─── COMPARISON NOTE: Current vs previous day/period ───────────────── */
+.compare-note {
+  margin-top: .55rem;
+  padding: .42rem .58rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,.035);
+  color: var(--text-secondary);
+  font-size: .72rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+.compare-note.is-up {
+  color: var(--good);
+  background: var(--good-dim);
+  border-color: rgba(34,197,94,.28);
+}
+.compare-note.is-down {
+  color: var(--danger);
+  background: var(--danger-dim);
+  border-color: rgba(239,68,68,.36);
+}
+.compare-note.is-flat {
+  color: var(--text-secondary);
+}
+.compare-note.is-empty {
+  color: var(--text-muted) !important;
+  background: var(--empty-dim);
+}
+.kpi-stat-note .compare-note {
+  margin-top: .45rem;
+}
+.picker-score .compare-note {
+  margin-top: .35rem;
+  padding: .3rem .42rem;
+  font-size: .66rem;
+  text-align: right;
+}
+
+
+/* ========================================================
+   Target status color override
+   ต่ำกว่า Target เดิมใช้สีเหลือง ตอนนี้เปลี่ยนเป็นสีแดง
+   ======================================================== */
+:root {
+  --warn: #EF4444;
+  --warn-dim: rgba(239,68,68,.14);
+}
+
+.is-warning .kpi-badge,
+.status-pill.warn,
+.status-pill.is-warning,
+.category-title-row span,
+.zone-card-badge.is-warning {
+  background: var(--warn-dim);
+  color: var(--warn);
+}
+
+.kpi-main.is-warning,
+.category-card.is-warning,
+.shift-card.is-warning,
+.training-card.is-warning,
+.bu-card.is-warning,
+.zone-card.is-warning,
+.picker-row.is-warning {
+  border-color: var(--warn);
+}
+
+.kpi-main.is-warning {
+  background: linear-gradient(135deg, var(--warn-dim), var(--bg-surface));
+}
+
+.is-warning .progress-fill,
+.mini-bar-fill.is-warning,
+.zone-card-bar-fill.is-warning,
+.training-stack-segment.is-warning {
+  background: var(--warn);
+}
+
+
+/* Picker: make User ID and Name clearly visible */
+.picker-person-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(118px, .65fr);
+  gap: .6rem;
+  align-items: stretch;
+}
+
+.picker-person-name,
+.picker-person-id {
+  display: grid;
+  gap: .18rem;
+  padding: .62rem .75rem;
+  border: 1px solid rgba(148,163,184,.22);
+  border-radius: 14px;
+  background: rgba(255,255,255,.055);
+}
+
+.picker-person-name {
+  border-left: 4px solid var(--blue);
+}
+
+.picker-person-id {
+  border-left: 4px solid rgba(148,163,184,.55);
+  text-align: right;
+}
+
+.picker-person-label {
+  color: var(--text-muted);
+  font-size: .64rem;
+  font-weight: 900;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.picker-person-name strong {
+  color: #fff;
+  font-size: clamp(1.05rem, 1.35vw, 1.35rem);
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+}
+
+.picker-person-id strong {
+  color: #E0F2FE;
+  font-family: var(--font-mono);
+  font-size: clamp(.95rem, 1.2vw, 1.15rem);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  .picker-person-card {
+    grid-template-columns: 1fr;
+  }
+
+  .picker-person-id {
+    text-align: left;
+  }
+}
+
+
+/* Picker: show Zone from Column AH clearly */
+.picker-meta-line b {
+  color: var(--text-muted);
+  font-size: .62rem;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  margin-right: .22rem;
+}
+
+.picker-meta-line .picker-meta-zone {
+  border-color: rgba(26,108,246,.48);
+  background: linear-gradient(135deg, rgba(26,108,246,.20), rgba(255,255,255,.045));
+  color: #E0F2FE;
+  font-weight: 900;
+}
+
+
+/* ========================================================
+   Theme contrast fix v55
+   ทำให้ Light/Dark Theme อ่านชัด ไม่กลืนกับพื้นหลัง
+   ======================================================== */
+:root {
+  --card-soft-bg: linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.018));
+  --chip-soft-bg: rgba(255,255,255,.045);
+  --chip-soft-bg-strong: rgba(255,255,255,.065);
+  --shadow-soft: 0 14px 34px rgba(0,0,0,.18);
+}
+
+:root.light {
+  --bg-base: #F3F7FF;
+  --bg-surface: #FFFFFF;
+  --bg-raised: #F1F5F9;
+  --bg-hover: #E2E8F0;
+  --border-subtle: rgba(15,23,42,.10);
+  --border-mid: rgba(15,23,42,.16);
+  --text-primary: #0F172A;
+  --text-secondary: #334155;
+  --text-muted: #64748B;
+  --blue-dim: rgba(26,108,246,.12);
+  --blue-glow: rgba(26,108,246,.20);
+  --good-dim: rgba(22,163,74,.12);
+  --warn-dim: rgba(220,38,38,.12);
+  --empty-dim: rgba(100,116,139,.14);
+  --danger-dim: rgba(220,38,38,.12);
+  --card-soft-bg: linear-gradient(180deg, #FFFFFF, #F8FAFC);
+  --chip-soft-bg: rgba(15,23,42,.045);
+  --chip-soft-bg-strong: rgba(15,23,42,.075);
+  --shadow-soft: 0 14px 32px rgba(15,23,42,.08);
+}
+
+:root.light body {
+  background:
+    linear-gradient(90deg, rgba(26,108,246,.045) 1px, transparent 1px) 0 0 / 42px 42px,
+    linear-gradient(rgba(26,108,246,.035) 1px, transparent 1px) 0 0 / 42px 42px,
+    radial-gradient(circle at 20% 0%, rgba(26,108,246,.10), transparent 34%),
+    radial-gradient(circle at 100% 18%, rgba(34,197,94,.08), transparent 30%),
+    var(--bg-base);
+}
+
+/* Cards / panels that used transparent white overlays now use theme-safe surfaces */
+.snapshot-card,
+.present-narrative-card,
+.present-score-card,
+.present-kpi-card,
+.present-brief-card,
+.zone-card,
+.picker-board {
+  background: var(--card-soft-bg);
+  box-shadow: var(--shadow-soft);
+}
+
+.zone-summary-stat,
+.present-list li,
+.training-score-row > div,
+.picker-row,
+.picker-meta-line span,
+.picker-score-block,
+.compare-note,
+.picker-person-name,
+.picker-person-id {
+  background: var(--chip-soft-bg);
+}
+
+.shift-affiliation-row,
+.bu-detail-row,
+.training-focus-row,
+.picker-score-block-secondary {
+  background: var(--bg-raised);
+}
+
+/* Text that was forced white now follows theme text color */
+.snapshot-card strong,
+.kpi-stat-value,
+.training-summary-card strong,
+.training-score-row strong,
+.training-legend-row strong,
+.picker-person-name strong,
+.picker-score-block strong,
+.present-score-card strong,
+.present-kpi-card strong {
+  color: var(--text-primary);
+}
+
+.picker-person-id strong {
+  color: var(--text-accent);
+}
+
+.active-date-banner strong {
+  color: var(--text-primary);
+}
+
+/* Keep active buttons readable on blue backgrounds */
+.chip.active,
+.nav-item.active,
+.btn-target-primary,
+.btn-apply:hover,
+.present-range-btn.active {
+  color: #FFFFFF;
+}
+
+/* Light theme specific contrast fixes */
+:root.light .topbar,
+:root.light .sidebar,
+:root.light .quick-filters,
+:root.light .date-input,
+:root.light .btn-refresh,
+:root.light .sidebar-kpi-mini {
+  box-shadow: 0 10px 28px rgba(15,23,42,.06);
+}
+
+:root.light .active-date-banner {
+  background: linear-gradient(135deg, rgba(26,108,246,.12), #FFFFFF);
+  box-shadow: var(--shadow-soft);
+}
+
+:root.light .active-date-banner.is-fallback {
+  background: linear-gradient(135deg, rgba(220,38,38,.10), #FFFFFF);
+}
+
+:root.light .target-dialog {
+  background: #FFFFFF;
+  color: var(--text-primary);
+  box-shadow: 0 28px 80px rgba(15,23,42,.18);
+}
+
+:root.light .target-modal-backdrop {
+  background: rgba(15,23,42,.32);
+}
+
+:root.light .target-icon-btn,
+:root.light .btn-target-secondary,
+:root.light .target-field,
+:root.light .target-field input {
+  background: #F8FAFC;
+  color: var(--text-primary);
+}
+
+:root.light .target-form-note {
+  color: var(--text-secondary);
+  background: rgba(26,108,246,.08);
+}
+
+:root.light .loading-dialog,
+:root.light .skeleton-card {
+  background: #FFFFFF;
+  box-shadow: 0 18px 48px rgba(15,23,42,.14);
+}
+
+:root.light .skeleton-line {
+  background: linear-gradient(90deg, rgba(15,23,42,.06), rgba(15,23,42,.12), rgba(15,23,42,.06));
+}
+
+:root.light .data-table th {
+  background: #EAF1FB;
+  color: #1E293B;
+}
+
+:root.light .data-table td {
+  color: #334155;
+}
+
+:root.light .data-table tbody tr:nth-child(even) td,
+:root.light .data-table tr:hover td {
+  background: #F8FAFC;
+}
+
+:root.light .zone-card-target-line {
+  background: rgba(15,23,42,.38);
+}
+
+:root.light .picker-board.is-bottom .picker-rank {
+  color: #B91C1C;
+}
+
+:root.light .picker-meta-line .picker-meta-zone {
+  background: linear-gradient(135deg, rgba(26,108,246,.12), rgba(26,108,246,.04));
+  color: #0F3F9D;
+}
+
+:root.light .picker-row.is-low-sample {
+  background: linear-gradient(90deg, rgba(220,38,38,.08), rgba(15,23,42,.025));
+}
+
+/* Status contrast: warning is red and readable in both themes */
+.is-warning .category-title-row span,
+.is-warning .shift-title-row > strong,
+.is-warning .bu-title-row > strong,
+.zone-card-badge.is-warning,
+.zone-card-gap.is-warning,
+.picker-row.is-warning .picker-score-gap,
+.compare-note.is-down {
+  color: var(--warn);
+}
+
+/* Make muted/empty text readable on light theme instead of disappearing */
+:root.light .is-empty,
+:root.light .status-pill.empty,
+:root.light .status-pill.is-empty,
+:root.light .compare-note.is-empty {
+  color: #475569 !important;
+}

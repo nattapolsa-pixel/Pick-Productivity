@@ -8,7 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link rel="preconnect" href="https://script.google.com">
   <link rel="preconnect" href="https://script.googleusercontent.com">
-  <link rel="stylesheet" href="styles.css?v=target-settings-20260520">
+  <link rel="stylesheet" href="styles.css?v=theme-contrast-v55-20260521">
 </head>
 <body>
   <div class="dashboard-ambient" aria-hidden="true">
@@ -16,7 +16,6 @@
     <span class="ambient-line ambient-line-b"></span>
     <span class="ambient-scan"></span>
   </div>
-
 
   <!-- ===== TOP BAR ===== -->
   <header class="topbar">
@@ -33,6 +32,7 @@
         <span class="topbar-signal" aria-hidden="true"><i></i></span>
       </div>
     </div>
+
     <div class="topbar-center">
       <div class="quick-filters">
         <button class="chip active" type="button" data-range="all">ทั้งหมด</button>
@@ -41,6 +41,7 @@
         <button class="chip" type="button" data-range="month">เดือนนี้</button>
       </div>
     </div>
+
     <div class="topbar-right">
       <div class="date-filter-row">
         <input id="startDate" type="date" class="date-input" placeholder="วันเริ่มต้น">
@@ -48,6 +49,7 @@
         <input id="endDate" type="date" class="date-input" placeholder="วันสิ้นสุด">
         <button id="applyDateButton" class="btn-apply" type="button">ใช้</button>
       </div>
+
       <button id="targetSettingsButton" class="btn-target" type="button" aria-haspopup="dialog">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path d="M2 11h10M3 8h8M4 5h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -55,6 +57,14 @@
         </svg>
         Target
       </button>
+
+      <button id="themeToggleButton" class="btn-target" type="button" aria-pressed="false" aria-label="สลับธีม">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <circle cx="7" cy="7" r="4" fill="currentColor"/>
+        </svg>
+        ธีม
+      </button>
+
       <button id="refreshButton" class="btn-refresh" type="button">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path d="M13 7A6 6 0 1 1 7 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -62,7 +72,8 @@
         </svg>
         รีเฟรช
       </button>
-      <span id="syncStatus" class="sync-badge">กำลังโหลด...</span>
+
+      <span id="syncStatus" class="sync-badge" role="status" aria-live="polite">กำลังโหลด...</span>
     </div>
   </header>
 
@@ -82,73 +93,108 @@
       </div>
 
       <ul class="nav-list">
-        <li><button class="nav-item active" data-tab="overview">
-          <span class="nav-icon">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <rect x="1" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".8"/>
-              <rect x="9" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".5"/>
-              <rect x="1" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".5"/>
-              <rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".3"/>
-            </svg>
-          </span>
-          <span class="nav-label">Overview</span>
-        </button></li>
-        <li><button class="nav-item" data-tab="present">
-          <span class="nav-icon">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M2 11.5h12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".45"/>
-              <path d="M3 10l2.4-3 2.2 1.7L10.6 4 13 6.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-              <circle cx="10.6" cy="4" r="1.1" fill="currentColor" opacity=".8"/>
-            </svg>
-          </span>
-          <span class="nav-label">Present</span>
-        </button></li>
-        <li><button class="nav-item" data-tab="rack">
-          <span class="nav-icon">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <rect x="1" y="3" width="14" height="2.5" rx="1" fill="currentColor" opacity=".8"/>
-              <rect x="1" y="7" width="14" height="2.5" rx="1" fill="currentColor" opacity=".5"/>
-              <rect x="1" y="11" width="14" height="2.5" rx="1" fill="currentColor" opacity=".3"/>
-            </svg>
-          </span>
-          <span class="nav-label">Rack / EA</span>
-        </button></li>
-        <li><button class="nav-item" data-tab="shift">
-          <span class="nav-icon">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5" opacity=".7"/>
-              <path d="M8 4.5V8l3 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </span>
-          <span class="nav-label">Shift</span>
-        </button></li>
-        <li><button class="nav-item" data-tab="training">
-          <span class="nav-icon">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M2 12l3-4 3 2 3-5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/>
-            </svg>
-          </span>
-          <span class="nav-label">Training</span>
-        </button></li>
-        <li><button class="nav-item" data-tab="bu">
-          <span class="nav-icon">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <rect x="2" y="8" width="4" height="6" rx="1" fill="currentColor" opacity=".8"/>
-              <rect x="7" y="4" width="4" height="10" rx="1" fill="currentColor" opacity=".5"/>
-              <rect x="12" y="1" width="2" height="13" rx="1" fill="currentColor" opacity=".3"/>
-            </svg>
-          </span>
-          <span class="nav-label">BU</span>
-        </button></li>
-        <li><button class="nav-item" data-tab="zone">
-          <span class="nav-icon">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M8 2C5.24 2 3 4.24 3 7c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5z" stroke="currentColor" stroke-width="1.5" opacity=".8"/>
-              <circle cx="8" cy="7" r="1.5" fill="currentColor"/>
-            </svg>
-          </span>
-          <span class="nav-label">Zone</span>
-        </button></li>
+        <li>
+          <button class="nav-item active" data-tab="overview">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <rect x="1" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".8"/>
+                <rect x="9" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".5"/>
+                <rect x="1" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".5"/>
+                <rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".3"/>
+              </svg>
+            </span>
+            <span class="nav-label">Overview</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="nav-item" data-tab="pickers">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M3 13h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".4"/>
+                <path d="M4 11V6.5M8 11V3M12 11V8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                <circle cx="4" cy="5" r="1.3" fill="currentColor" opacity=".65"/>
+                <circle cx="8" cy="2.4" r="1.3" fill="currentColor" opacity=".9"/>
+                <circle cx="12" cy="7" r="1.3" fill="currentColor" opacity=".55"/>
+              </svg>
+            </span>
+            <span class="nav-label">Pickers</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="nav-item" data-tab="present">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M2 11.5h12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".45"/>
+                <path d="M3 10l2.4-3 2.2 1.7L10.6 4 13 6.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="10.6" cy="4" r="1.1" fill="currentColor" opacity=".8"/>
+              </svg>
+            </span>
+            <span class="nav-label">Present</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="nav-item" data-tab="rack">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <rect x="1" y="3" width="14" height="2.5" rx="1" fill="currentColor" opacity=".8"/>
+                <rect x="1" y="7" width="14" height="2.5" rx="1" fill="currentColor" opacity=".5"/>
+                <rect x="1" y="11" width="14" height="2.5" rx="1" fill="currentColor" opacity=".3"/>
+              </svg>
+            </span>
+            <span class="nav-label">Rack / EA</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="nav-item" data-tab="shift">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5" opacity=".7"/>
+                <path d="M8 4.5V8l3 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </span>
+            <span class="nav-label">Shift</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="nav-item" data-tab="training">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M2 12l3-4 3 2 3-5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/>
+              </svg>
+            </span>
+            <span class="nav-label">Training</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="nav-item" data-tab="bu">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <rect x="2" y="8" width="4" height="6" rx="1" fill="currentColor" opacity=".8"/>
+                <rect x="7" y="4" width="4" height="10" rx="1" fill="currentColor" opacity=".5"/>
+                <rect x="12" y="1" width="2" height="13" rx="1" fill="currentColor" opacity=".3"/>
+              </svg>
+            </span>
+            <span class="nav-label">BU</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="nav-item" data-tab="zone">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M8 2C5.24 2 3 4.24 3 7c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5z" stroke="currentColor" stroke-width="1.5" opacity=".8"/>
+                <circle cx="8" cy="7" r="1.5" fill="currentColor"/>
+              </svg>
+            </span>
+            <span class="nav-label">Zone</span>
+          </button>
+        </li>
       </ul>
 
       <div class="warehouse-mascot" aria-hidden="true">
@@ -161,6 +207,7 @@
         <div class="mascot-box"></div>
         <div class="mascot-shadow"></div>
       </div>
+
       <div class="sidebar-footer">
         <div class="sidebar-note">ค่าจาก Column AF</div>
         <div class="sidebar-note">ตัดค่า 0 ออกอัตโนมัติ</div>
@@ -177,10 +224,15 @@
             <p class="panel-eyebrow">OVERVIEW</p>
             <h1 class="panel-title">Picking Productivity — ภาพรวม</h1>
           </div>
-          <p class="panel-desc">ใช้ค่า Average Pick/Hr จาก Column AF เท่านั้น ตัดค่า 0 / ค่าว่าง ออกจากการเฉลี่ย</p>
         </div>
 
-        <div class="snapshot-grid" id="snapshotGrid" aria-label="Quick dashboard snapshot"></div>
+        <div class="active-date-banner" id="activeDateBanner" aria-live="polite">
+          <div>
+            <span class="active-date-eyebrow">ข้อมูลที่กำลังแสดง</span>
+            <strong id="activeDateLabel">กำลังตรวจสอบวันที่ล่าสุด...</strong>
+          </div>
+          <span id="activeDateHint" class="active-date-hint">เปิดเว็บแล้วระบบจะเลือกวันนี้ให้อัตโนมัติ</span>
+        </div>
 
         <!-- KPI TRIO -->
         <div class="kpi-trio">
@@ -194,31 +246,23 @@
               <span data-target-label="overall">Target ≥ 170</span>
               <span id="overallGap">—</span>
             </div>
-            <div class="progress-track"><div id="overallProgress" class="progress-fill"></div></div>
-          </article>
-
-          <article class="kpi-stat">
-            <div class="kpi-stat-icon">✓</div>
-            <div class="kpi-stat-body">
-              <div class="kpi-stat-label">รายการที่นำมาเฉลี่ย</div>
-              <div class="kpi-stat-value" id="validRows">—</div>
-              <div class="kpi-stat-note">ตัดค่า 0 / ว่าง / ไม่ใช่ตัวเลขออกแล้ว</div>
+            <div class="progress-track">
+              <div id="overallProgress" class="progress-fill"></div>
             </div>
           </article>
 
-          <article class="kpi-stat">
-            <div class="kpi-stat-icon">#</div>
+          <article class="kpi-stat kpi-stat-total">
+            <div class="kpi-stat-icon">Σ</div>
             <div class="kpi-stat-body">
-              <div class="kpi-stat-label">รายการทั้งหมดในช่วงที่เลือก</div>
-              <div class="kpi-stat-value" id="totalRows">—</div>
-              <div class="kpi-stat-note" id="excludedRows">—</div>
+              <div class="kpi-stat-label">Total Pick</div>
+              <div class="kpi-stat-value" id="overviewTotalPick">—</div>
+              <div class="kpi-stat-note" id="overviewTotalPickNote">—</div>
             </div>
           </article>
         </div>
 
         <!-- VISUAL TRIO -->
         <div class="visual-trio">
-          <!-- GAUGE -->
           <article class="visual-card gauge-card">
             <div class="visual-card-head">
               <div>
@@ -239,7 +283,6 @@
             </div>
           </article>
 
-          <!-- RACK MINI -->
           <article class="visual-card">
             <div class="visual-card-head">
               <div>
@@ -251,7 +294,6 @@
             <div id="categoryMiniChart" class="mini-chart"></div>
           </article>
 
-          <!-- SHIFT MINI -->
           <article class="visual-card">
             <div class="visual-card-head">
               <div>
@@ -265,6 +307,18 @@
         </div>
       </section>
 
+      <!-- TAB: PICKERS -->
+      <section class="tab-panel" id="tab-pickers">
+        <div class="panel-header picker-panel-header">
+          <div>
+            <p class="panel-eyebrow">PICKER RANKING</p>
+            <h1 class="panel-title">Top Pick / Bottom Pick รายคน</h1>
+          </div>
+          <p class="panel-desc">จัดอันดับจาก Average Pick/Hr Column AF ตามช่วงวันที่ที่เลือก ใช้ดูคนที่ทำได้ดีและคนที่ควรติดตามก่อน</p>
+        </div>
+
+        <div class="picker-grid" id="pickerGrid" aria-label="Top Pick and Bottom Pick ranking"></div>
+      </section>
 
       <!-- TAB: PRESENT -->
       <section class="tab-panel" id="tab-present">
@@ -324,6 +378,7 @@
           </article>
         </section>
       </section>
+
       <!-- TAB: RACK -->
       <section class="tab-panel" id="tab-rack">
         <div class="panel-header">
@@ -412,6 +467,7 @@
 
     </main>
   </div>
+
   <div class="loading-modal" id="loadingModal" hidden>
     <div class="loading-modal-backdrop" data-loading-close></div>
     <section class="loading-dialog" role="dialog" aria-modal="true" aria-labelledby="loadingTitle">
@@ -431,7 +487,6 @@
       </div>
     </section>
   </div>
-
 
   <div class="target-modal" id="targetSettingsModal" hidden>
     <div class="target-modal-backdrop" data-target-close></div>
@@ -481,7 +536,8 @@
       </form>
     </section>
   </div>
-  <script src="script.js?v=target-settings-20260520"></script>
+
+  <script src="script.js?v=picker-zone-ah-v54-20260521"></script>
   <script>
     // ===== TAB SWITCHING =====
     document.querySelectorAll('.nav-item').forEach(btn => {

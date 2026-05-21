@@ -3,11 +3,13 @@ const RESULTS_SHEET_NAME = "Results Master";
 const UPDATE_NAME_SHEET_NAME = "Update name";
 
 const CACHE_SECONDS = 300;
-const CACHE_VERSION = "v36-training-target-100";
+const CACHE_VERSION = "v44-picker-zone-column-ah";
 
 const SHEET_COLUMN = {
   DATE: 3,        // C
   USER_ID: 4,     // D
+  NAME: 2,        // B = Name
+  TOTAL_PICK: 5,  // E = Total Pick (fallback ถ้าหา Header ไม่เจอ)
   AVERAGE_AF: 32, // AF
   SHIFT: 33,      // AG
   POSITION: 34,   // AH
@@ -238,6 +240,72 @@ function getDailyIndexFast_(params) {
   }
 }
 
+
+function findHeaderColumn_(sheet, matchers, fallbackColumn) {
+  try {
+    const lastColumn = Math.max(sheet.getLastColumn(), SHEET_COLUMN.PICK_TYPE);
+    const headers = sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0] || [];
+
+    for (let index = 0; index < headers.length; index += 1) {
+      const header = String(headers[index] || "")
+        .toLowerCase()
+        .replace(/[\s_\-()]+/g, "")
+        .trim();
+
+      if (!header) {
+        continue;
+      }
+
+      const matched = matchers.some((matcher) => {
+        const normalizedMatcher = String(matcher || "")
+          .toLowerCase()
+          .replace(/[\s_\-()]+/g, "")
+          .trim();
+        return normalizedMatcher && header.includes(normalizedMatcher);
+      });
+
+      if (matched) {
+        return index + 1;
+      }
+    }
+  } catch (error) {
+    console.warn("findHeaderColumn_ failed", error);
+  }
+
+  return fallbackColumn;
+}
+
+function getTotalPickColumn_(sheet) {
+  return findHeaderColumn_(
+    sheet,
+    [
+      "total pick",
+      "totalpick",
+      "actual pick",
+      "actualpick",
+      "pick qty",
+      "pickqty",
+      "จำนวน pick",
+      "จำนวนหยิบ",
+      "ยอด pick",
+      "ยอดหยิบ",
+      "รวม pick",
+      "รวมหยิบ",
+    ],
+    SHEET_COLUMN.TOTAL_PICK
+  );
+}
+
+function getTotalPickValue_(rawValue, displayValue) {
+  const rawNumber = toNumber_(rawValue);
+
+  if (rawNumber !== 0) {
+    return rawNumber;
+  }
+
+  return toNumber_(displayValue);
+}
+
 function buildDailyIndexPayload_() {
   const startedAt = Date.now();
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -274,9 +342,12 @@ function buildDailyIndexPayload_() {
   const dataRange = sheet.getRange(2, SHEET_COLUMN.DATE, numRows, dataColumnCount);
   const dataValues = dataRange.getValues();
   const dataDisplayValues = dataRange.getDisplayValues();
+  // Name อยู่ Column B ซึ่งอยู่นอกช่วง C:AK จึงอ่านแยก เพื่อให้ Picker แสดงชื่อจริงชัดเจน
+  const nameDisplayValues = sheet.getRange(2, SHEET_COLUMN.NAME, numRows, 1).getDisplayValues();
   const columnOffset = {
     date: SHEET_COLUMN.DATE - SHEET_COLUMN.DATE,
     userId: SHEET_COLUMN.USER_ID - SHEET_COLUMN.DATE,
+    totalPick: getTotalPickColumn_(sheet) - SHEET_COLUMN.DATE,
     average: SHEET_COLUMN.AVERAGE_AF - SHEET_COLUMN.DATE,
     shift: SHEET_COLUMN.SHIFT - SHEET_COLUMN.DATE,
     position: SHEET_COLUMN.POSITION - SHEET_COLUMN.DATE,
@@ -313,7 +384,9 @@ function buildDailyIndexPayload_() {
     }
 
     const day = dates[dateKey];
+    const rowTotalPick = getTotalPickValue_(dataValues[index][columnOffset.totalPick], dataDisplayValues[index][columnOffset.totalPick]);
     day.filteredRows += 1;
+    day.totalPick += rowTotalPick;
 
     const average = toNumber_(dataValues[index][columnOffset.average]);
 
@@ -330,6 +403,22 @@ function buildDailyIndexPayload_() {
       average
     );
 
+    const pickerPickType = normalizePickType_(dataValues[index][columnOffset.pickType]);
+    const pickerBuKey = normalizeBu_(dataDisplayValues[index][columnOffset.bu]);
+    addPickerValue_(
+      day.pickers,
+      dataDisplayValues[index][columnOffset.userId] || dataValues[index][columnOffset.userId],
+      nameDisplayValues[index][0],
+      average,
+      {
+        shift: dataDisplayValues[index][columnOffset.shift],
+        affiliation: dataDisplayValues[index][columnOffset.affiliation],
+        buKey: pickerBuKey,
+        pickType: pickerPickType,
+        zone: dataDisplayValues[index][columnOffset.position],
+        totalPick: rowTotalPick,
+      }
+    );
     addValue_(day.overall, average);
 
     const pickType = normalizePickType_(dataValues[index][columnOffset.pickType]);
@@ -404,6 +493,7 @@ function buildDailyIndexPayload_() {
     trainingDebug: createTrainingDebugPayload_(trainingRoster, trainingDebugSummary, []),
     dateKeys: dateKeys,
     dates: dates,
+    totalPick: dateKeys.reduce((sum, dateKey) => sum + (dates[dateKey].totalPick || 0), 0),
     totalRows: dateKeys.reduce((sum, dateKey) => sum + (dates[dateKey].filteredRows || 0), 0),
     invalidDateRows: invalidDateRows,
     emptyDateRows: emptyDateRows,
@@ -414,6 +504,7 @@ function createDailyRawSummary_() {
   return {
     filteredRows: 0,
     excludedCount: 0,
+    totalPick: 0,
     overall: createBucket_(),
     categories: {
       fullRack: createBucket_(),
@@ -423,6 +514,7 @@ function createDailyRawSummary_() {
     zones: createZoneSummary_(),
     bu: createBuSummary_(),
     shifts: createShiftSummary_(),
+    pickers: createPickerSummary_(),
     training: createTrainingSummary_(),
   };
 }
@@ -467,10 +559,13 @@ function buildDashboardPayload_(startDateText, endDateText) {
   const dataRange = sheet.getRange(2, SHEET_COLUMN.DATE, numRows, dataColumnCount);
   const dataValues = dataRange.getValues();
   const dataDisplayValues = dataRange.getDisplayValues();
+  // Name อยู่ Column B ซึ่งอยู่นอกช่วง C:AK จึงอ่านแยก เพื่อให้ Picker แสดงชื่อจริงชัดเจน
+  const nameDisplayValues = sheet.getRange(2, SHEET_COLUMN.NAME, numRows, 1).getDisplayValues();
   const shouldFilterByDate = Boolean(startDate || endDate);
   const columnOffset = {
     date: SHEET_COLUMN.DATE - SHEET_COLUMN.DATE,
     userId: SHEET_COLUMN.USER_ID - SHEET_COLUMN.DATE,
+    totalPick: getTotalPickColumn_(sheet) - SHEET_COLUMN.DATE,
     average: SHEET_COLUMN.AVERAGE_AF - SHEET_COLUMN.DATE,
     shift: SHEET_COLUMN.SHIFT - SHEET_COLUMN.DATE,
     position: SHEET_COLUMN.POSITION - SHEET_COLUMN.DATE,
@@ -488,11 +583,15 @@ function buildDashboardPayload_(startDateText, endDateText) {
   const zoneSummary = createZoneSummary_();
   const buSummary = createBuSummary_();
   const shiftSummary = createShiftSummary_();
+  const pickerSummary = createPickerSummary_();
   const trainingSummary = createTrainingSummary_();
   seedTrainingSummary_(trainingSummary, trainingRoster);
 
   let filteredRows = 0;
   let excludedCount = 0;
+  let totalPick = 0;
+  let totalPickStartDate = null;
+  let totalPickEndDate = null;
   const filterDiagnostics = {
     enabled: shouldFilterByDate,
     sourceColumn: "C",
@@ -562,7 +661,22 @@ function buildDashboardPayload_(startDateText, endDateText) {
       filterDiagnostics.lastMatchedDate = matchedText;
     }
 
+    const rowTotalPick = getTotalPickValue_(dataValues[index][columnOffset.totalPick], dataDisplayValues[index][columnOffset.totalPick]);
     filteredRows += 1;
+    totalPick += rowTotalPick;
+
+    if (rowDateForTraining) {
+      const rowDateForRange = new Date(rowDateForTraining.getTime());
+      rowDateForRange.setHours(0, 0, 0, 0);
+
+      if (!totalPickStartDate || rowDateForRange < totalPickStartDate) {
+        totalPickStartDate = rowDateForRange;
+      }
+
+      if (!totalPickEndDate || rowDateForRange > totalPickEndDate) {
+        totalPickEndDate = rowDateForRange;
+      }
+    }
 
     if (average <= 0) {
       excludedCount += 1;
@@ -572,6 +686,21 @@ function buildDashboardPayload_(startDateText, endDateText) {
     addValue_(summary.overall, average);
 
     const pickType = normalizePickType_(dataValues[index][columnOffset.pickType]);
+    const buKey = normalizeBu_(dataDisplayValues[index][columnOffset.bu]);
+    addPickerValue_(
+      pickerSummary,
+      dataDisplayValues[index][columnOffset.userId] || dataValues[index][columnOffset.userId],
+      nameDisplayValues[index][0],
+      average,
+      {
+        shift: dataDisplayValues[index][columnOffset.shift],
+        affiliation: dataDisplayValues[index][columnOffset.affiliation],
+        buKey: buKey,
+        pickType: pickType,
+        zone: dataDisplayValues[index][columnOffset.position],
+        totalPick: rowTotalPick,
+      }
+    );
 
     if (pickType && summary[pickType]) {
       addValue_(summary[pickType], average);
@@ -585,7 +714,6 @@ function buildDashboardPayload_(startDateText, endDateText) {
 
     addShiftValue_(shiftSummary, dataDisplayValues[index][columnOffset.shift], dataDisplayValues[index][columnOffset.affiliation], average);
 
-    const buKey = normalizeBu_(dataDisplayValues[index][columnOffset.bu]);
     addValue_(buSummary[buKey], average);
 
     if (pickType && buSummary[buKey].details && buSummary[buKey].details[pickType]) {
@@ -612,7 +740,14 @@ function buildDashboardPayload_(startDateText, endDateText) {
     zones: finalizeZones_(zoneSummary),
     bu: finalizeBu_(buSummary),
     shifts: finalizeShifts_(shiftSummary),
+    pickers: finalizePickerSummary_(pickerSummary, TARGETS.overall),
     training: finalizeTrainingSummary_(trainingSummary),
+    totalPick: totalPick,
+    totalPickRange: {
+      startDate: totalPickStartDate ? formatDateDMY_(totalPickStartDate) : "",
+      endDate: totalPickEndDate ? formatDateDMY_(totalPickEndDate) : "",
+      sourceColumn: "C",
+    },
     totalRows: filteredRows,
     filteredRows: filteredRows,
     filterDiagnostics: filterDiagnostics,
@@ -1184,6 +1319,168 @@ function finalizeShifts_(shiftSummary) {
   });
 }
 
+
+function createPickerSummary_() {
+  return {};
+}
+
+function normalizePickerKey_(userIdValue, nameValue) {
+  const userId = normalizeUserId_(userIdValue);
+
+  if (userId) {
+    return userId;
+  }
+
+  return String(nameValue || "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+}
+
+function findPickerDisplayName_(nameValue, userId) {
+  const name = String(nameValue || "").replace(/\s+/g, " ").trim();
+
+  if (name && normalizeUserId_(name) !== userId) {
+    return name;
+  }
+
+  return userId ? `User ID ${userId}` : "ไม่ระบุชื่อ";
+}
+
+function addCount_(summary, key) {
+  const label = String(key || "").replace(/\s+/g, " ").trim();
+
+  if (!label) {
+    return;
+  }
+
+  summary[label] = Number(summary[label] || 0) + 1;
+}
+
+function getTopCountLabel_(summary, fallback) {
+  const keys = Object.keys(summary || {});
+
+  if (keys.length === 0) {
+    return fallback || "-";
+  }
+
+  return keys.sort((left, right) => {
+    const countDiff = Number(summary[right] || 0) - Number(summary[left] || 0);
+    return countDiff || left.localeCompare(right, "th");
+  })[0];
+}
+
+function getBuLabel_(key) {
+  const item = BU_GROUPS.filter((bu) => bu.key === key)[0];
+  return item ? item.label : (key || "Other BU");
+}
+
+function getPickTypeLabel_(key) {
+  const item = PICK_TYPE_DETAILS.filter((detail) => detail.key === key)[0];
+  return item ? item.label : (key || "-");
+}
+
+function addPickerValue_(pickerSummary, userIdValue, nameValue, average, meta) {
+  const userId = normalizeUserId_(userIdValue);
+  const name = findPickerDisplayName_(nameValue, userId);
+  const key = normalizePickerKey_(userId, name);
+
+  if (!key) {
+    return;
+  }
+
+  if (!pickerSummary[key]) {
+    pickerSummary[key] = {
+      userId: userId,
+      name: name,
+      sum: 0,
+      count: 0,
+      totalPick: 0,
+      shifts: {},
+      affiliations: {},
+      bu: {},
+      pickTypes: {},
+      zones: {},
+    };
+  }
+
+  const picker = pickerSummary[key];
+  picker.sum += Number(average || 0);
+  picker.count += 1;
+  picker.totalPick += Number(meta && meta.totalPick || 0);
+
+  if (name && (!picker.name || /^User ID/i.test(picker.name))) {
+    picker.name = name;
+  }
+
+  const shift = normalizeGroupLabel_(meta && meta.shift, "ไม่ระบุกะ");
+  const affiliation = normalizeGroupLabel_(meta && meta.affiliation, "ไม่ระบุสังกัด");
+  const buLabel = getBuLabel_(meta && meta.buKey);
+  const pickTypeLabel = getPickTypeLabel_(meta && meta.pickType);
+  const zoneLabel = normalizeGroupLabel_(meta && meta.zone, "ไม่ระบุ Zone");
+
+  addCount_(picker.shifts, shift);
+  addCount_(picker.affiliations, affiliation);
+  addCount_(picker.bu, buLabel);
+  addCount_(picker.pickTypes, pickTypeLabel);
+  addCount_(picker.zones, zoneLabel);
+}
+
+function finalizePickerRows_(pickerSummary, target) {
+  return Object.keys(pickerSummary || {})
+    .map((key) => {
+      const picker = pickerSummary[key] || {};
+      const count = Number(picker.count || 0);
+      const average = count > 0 ? Number(picker.sum || 0) / count : 0;
+      const gap = average - target;
+
+      return {
+        key: Utilities.base64EncodeWebSafe(String(key)).slice(0, 18),
+        userId: picker.userId || "",
+        name: picker.name || (picker.userId ? `User ID ${picker.userId}` : "ไม่ระบุชื่อ"),
+        average: round1_(average),
+        count: count,
+        totalPick: Math.round(Number(picker.totalPick || 0)),
+        target: target,
+        gap: round1_(gap),
+        status: average >= target ? "ผ่าน Target" : "ต่ำกว่า Target",
+        mainShift: getTopCountLabel_(picker.shifts, "ไม่ระบุกะ"),
+        mainAffiliation: getTopCountLabel_(picker.affiliations, "ไม่ระบุสังกัด"),
+        mainBu: getTopCountLabel_(picker.bu, "Other BU"),
+        mainPickType: getTopCountLabel_(picker.pickTypes, "-"),
+        mainZone: getTopCountLabel_(picker.zones, "ไม่ระบุ Zone"),
+      };
+    })
+    .filter((item) => item.count > 0);
+}
+
+function addPickerRanks_(items) {
+  return items.map((item, index) => ({
+    ...item,
+    rank: index + 1,
+  }));
+}
+
+function finalizePickerSummary_(pickerSummary, target) {
+  const rows = finalizePickerRows_(pickerSummary, target);
+  const top = rows.slice().sort((left, right) => {
+    const averageDiff = Number(right.average || 0) - Number(left.average || 0);
+    const countDiff = Number(right.count || 0) - Number(left.count || 0);
+    return averageDiff || countDiff || left.name.localeCompare(right.name, "th");
+  });
+  const bottom = rows.slice().sort((left, right) => {
+    const averageDiff = Number(left.average || 0) - Number(right.average || 0);
+    const countDiff = Number(right.count || 0) - Number(left.count || 0);
+    return averageDiff || countDiff || left.name.localeCompare(right.name, "th");
+  });
+
+  return {
+    total: rows.length,
+    top: addPickerRanks_(top.slice(0, 10)),
+    bottom: addPickerRanks_(bottom.slice(0, 10)),
+  };
+}
 function normalizeGroupLabel_(value, fallback) {
   const text = String(value || "").replace(/\s+/g, " ").trim();
   return text || fallback;
@@ -1388,6 +1685,9 @@ function isUsableDashboardPayload_(payload) {
       && Array.isArray(payload.zones)
       && Array.isArray(payload.bu)
       && Array.isArray(payload.shifts)
+      && payload.pickers
+      && Array.isArray(payload.pickers.top)
+      && Array.isArray(payload.pickers.bottom)
       && Array.isArray(payload.training)
   );
 }
@@ -1451,7 +1751,10 @@ function emptyPayload_(startedAt, startDateText, endDateText) {
     zones: finalizeZones_(createZoneSummary_()),
     bu: finalizeBu_(createBuSummary_()),
     shifts: [],
+    pickers: finalizePickerSummary_(createPickerSummary_(), TARGETS.overall),
     training: [],
+    totalPick: 0,
+    totalPickRange: { startDate: "", endDate: "", sourceColumn: "C" },
     totalRows: 0,
     filteredRows: 0,
     filterDiagnostics: {
@@ -1500,16 +1803,32 @@ function toNumber_(value) {
     return Number.isFinite(value) ? value : 0;
   }
 
-  const text = String(value || "")
+  const originalText = String(value || "").trim();
+  const lowerText = originalText.toLowerCase();
+
+  if (!originalText || lowerText === "not count" || lowerText === "notcount") {
+    return 0;
+  }
+
+  const cleanedText = originalText
     .replace(/,/g, "")
     .replace(/%/g, "")
     .trim();
 
-  if (!text || text.toLowerCase() === "not count") {
+  const directNumber = Number(cleanedText);
+
+  if (Number.isFinite(directNumber)) {
+    return directNumber;
+  }
+
+  // รองรับค่าที่เป็นข้อความ เช่น "1,234 รายการ" หรือ "180 Pick/Hr"
+  const numericMatch = cleanedText.match(/-?\d+(?:\.\d+)?/);
+
+  if (!numericMatch) {
     return 0;
   }
 
-  const number = Number(text);
+  const number = Number(numericMatch[0]);
   return Number.isFinite(number) ? number : 0;
 }
 

@@ -2,7 +2,7 @@ const RESULTS_API_URL = "https://script.google.com/macros/s/AKfycbyby7nOGMZe-w8p
 const REFRESH_INTERVAL_MS = 60 * 1000;
 const REQUEST_TIMEOUT_MS = 45000;
 const DAILY_INDEX_TIMEOUT_MS = 45000;
-const DASHBOARD_CACHE_PREFIX = "pickProductivityDashboardCache:v37-target-settings";
+const DASHBOARD_CACHE_PREFIX = "pickProductivityDashboardCache:v51-picker-zone-column-ah";
 const TARGET_STORAGE_KEY = "pickProductivityTargets:v1";
 
 const DEFAULT_TARGETS = Object.freeze({
@@ -129,6 +129,7 @@ syncTargetReferences();
 
 const refreshButton = document.querySelector("#refreshButton");
 const targetSettingsButton = document.querySelector("#targetSettingsButton");
+const themeToggleButton = document.querySelector("#themeToggleButton");
 const targetSettingsModal = document.querySelector("#targetSettingsModal");
 const targetSettingsForm = document.querySelector("#targetSettingsForm");
 const targetSettingsClose = document.querySelector("#targetSettingsClose");
@@ -141,21 +142,27 @@ const startDateInput = document.querySelector("#startDate");
 const endDateInput = document.querySelector("#endDate");
 const applyDateButton = document.querySelector("#applyDateButton");
 const quickFilterButtons = document.querySelectorAll(".chip[data-range]");
+const activeDateBanner = document.querySelector("#activeDateBanner");
+const activeDateLabel = document.querySelector("#activeDateLabel");
+const activeDateHint = document.querySelector("#activeDateHint");
 
 const overallCard = document.querySelector("#overallCard");
 const overallAverage = document.querySelector("#overallAverage");
 const overallStatus = document.querySelector("#overallStatus");
 const overallGap = document.querySelector("#overallGap");
 const overallProgress = document.querySelector("#overallProgress");
-const validRows = document.querySelector("#validRows");
-const totalRows = document.querySelector("#totalRows");
-const excludedRows = document.querySelector("#excludedRows");
+const overviewTotalPick = document.querySelector("#overviewTotalPick");
+const overviewTotalPickNote = document.querySelector("#overviewTotalPickNote");
+const overviewTrainingCard = document.querySelector("#overviewTrainingCard");
+const overviewTrainingPositiveRate = document.querySelector("#overviewTrainingPositiveRate");
+const overviewTrainingPositiveNote = document.querySelector("#overviewTrainingPositiveNote");
 const categoryGrid = document.querySelector("#categoryGrid");
 const shiftGrid = document.querySelector("#shiftGrid");
 const buGrid = document.querySelector("#buGrid");
 const zoneBreakdownGrid = document.querySelector("#zoneBreakdownGrid");
 const trainingGrid = document.querySelector("#trainingGrid");
 const snapshotGrid = document.querySelector("#snapshotGrid");
+const pickerGrid = document.querySelector("#pickerGrid");
 const trainingSummaryGrid = document.querySelector("#trainingSummaryGrid");
 const trainingTrendChart = document.querySelector("#trainingTrendChart");
 const trainingFocusList = document.querySelector("#trainingFocusList");
@@ -178,7 +185,7 @@ const presentHighlights = document.querySelector("#presentHighlights");
 const presentRisks = document.querySelector("#presentRisks");
 const presentActions = document.querySelector("#presentActions");
 
-let selectedRange = "all";
+let selectedRange = "today";
 let isLoading = false;
 let dailyIndexPayload = null;
 let isDailyIndexLoading = false;
@@ -241,6 +248,7 @@ function showLoadingModal(estimatedMs = 8000) {
     const remain = Math.max(0, Math.round((_loadingEstimatedMs - elapsed) / 1000));
     if (loadingEstimate) loadingEstimate.textContent = remain > 0 ? `คาดว่าเสร็จภายใน ~${remain} วินาที` : "กำลังประมวลผล...";
   }, 250);
+  try { loadingClose?.focus(); } catch (e) {}
 }
 
 function hideLoadingModal() {
@@ -263,11 +271,52 @@ if (loadingClose) {
   });
 }
 
+// ---------------- Theme toggle ----------------
+const THEME_KEY = 'pickDashboardTheme:v1';
+function applyTheme(theme) {
+  try {
+    if (theme === 'light') document.documentElement.classList.add('light');
+    else document.documentElement.classList.remove('light');
+    if (themeToggleButton) themeToggleButton.setAttribute('aria-pressed', theme === 'light' ? 'true' : 'false');
+    localStorage.setItem(THEME_KEY, theme);
+  } catch (e) {}
+}
+
+function initTheme() {
+  const saved = localStorage.getItem(THEME_KEY);
+  const prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+  applyTheme(saved || (prefersLight ? 'light' : 'dark'));
+}
+
+if (themeToggleButton) {
+  themeToggleButton.addEventListener('click', () => {
+    const isLight = document.documentElement.classList.contains('light');
+    applyTheme(isLight ? 'dark' : 'light');
+  });
+}
+
+// keyboard shortcuts: R = refresh, T = open target settings (when not typing)
+document.addEventListener('keydown', (ev) => {
+  const active = document.activeElement;
+  const isTyping = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+  if (isTyping) return;
+  if (ev.key === 'r' || ev.key === 'R') {
+    ev.preventDefault();
+    loadDashboard({ force: true });
+  }
+  if (ev.key === 't' || ev.key === 'T') {
+    ev.preventDefault();
+    openTargetSettings();
+  }
+});
+
+initTheme();
+
 // Skeleton helpers
 function showSkeletons() {
   try {
     if (snapshotGrid && snapshotGrid.children.length === 0) {
-      snapshotGrid.innerHTML = Array.from({ length: 4 }).map(() => `
+      snapshotGrid.innerHTML = Array.from({ length: 6 }).map(() => `
         <article class="snapshot-card is-empty skeleton-card">
           <span class="skeleton-line" style="width:40%"></span>
           <strong class="skeleton-line" style="width:60%"></strong>
@@ -286,6 +335,7 @@ function showSkeletons() {
     fillIfEmpty(categoryGrid, `<div class="category-card skeleton-card"><h3 class="skeleton-line" style="width:50%"></h3><div class="category-value skeleton-line" style="width:60%"></div></div>`, 3);
     fillIfEmpty(shiftGrid, `<div class="shift-card skeleton-card"><h3 class="skeleton-line" style="width:40%"></h3><div class="shift-value skeleton-line" style="width:50%"></div></div>`, 3);
     fillIfEmpty(trainingGrid, `<div class="training-card skeleton-card"><h3 class="skeleton-line" style="width:50%"></h3><div class="training-value skeleton-line" style="width:60%"></div></div>`, 3);
+    fillIfEmpty(pickerGrid, `<div class="picker-board skeleton-card"><h3 class="skeleton-line" style="width:45%"></h3><div class="picker-row skeleton-line" style="width:100%"></div><div class="picker-row skeleton-line" style="width:92%"></div></div>`, 2);
     fillIfEmpty(buGrid, `<div class="bu-card skeleton-card"><h3 class="skeleton-line" style="width:50%"></h3><div class="bu-value skeleton-line" style="width:60%"></div></div>`, 2);
     fillIfEmpty(zoneBreakdownGrid, `<div class="zone-card skeleton-card"><h3 class="skeleton-line" style="width:50%"></h3><div class="zone-card-num skeleton-line" style="width:40%"></div></div>`, 3);
   } catch (e) { console.warn(e); }
@@ -293,7 +343,7 @@ function showSkeletons() {
 
 function clearSkeletons() {
   try {
-    [snapshotGrid, categoryGrid, shiftGrid, trainingGrid, buGrid, zoneBreakdownGrid].forEach((el) => {
+    [snapshotGrid, categoryGrid, shiftGrid, trainingGrid, pickerGrid, buGrid, zoneBreakdownGrid].forEach((el) => {
       if (!el) return;
       // if it contains skeleton-card items, clear so render functions can populate
       const hasSkeleton = Array.from(el.children).some(c => c.classList && c.classList.contains('skeleton-card'));
@@ -330,14 +380,17 @@ function getDashboardUrl(options = {}) {
     url.searchParams.set("callback", callback);
   }
 
-  if (startDateInput.value) {
-    url.searchParams.set("startDate", startDateInput.value);
-    url.searchParams.set("startDateDMY", toDdMmYyyyFromInput(startDateInput.value));
+  const requestStartDate = options.filterStartDate !== undefined ? options.filterStartDate : startDateInput.value;
+  const requestEndDate = options.filterEndDate !== undefined ? options.filterEndDate : endDateInput.value;
+
+  if (requestStartDate) {
+    url.searchParams.set("startDate", requestStartDate);
+    url.searchParams.set("startDateDMY", toDdMmYyyyFromInput(requestStartDate));
   }
 
-  if (endDateInput.value) {
-    url.searchParams.set("endDate", endDateInput.value);
-    url.searchParams.set("endDateDMY", toDdMmYyyyFromInput(endDateInput.value));
+  if (requestEndDate) {
+    url.searchParams.set("endDate", requestEndDate);
+    url.searchParams.set("endDateDMY", toDdMmYyyyFromInput(requestEndDate));
   }
 
   url.searchParams.set("dateFormat", "DMY");
@@ -383,6 +436,15 @@ function formatInteger(value) {
   return new Intl.NumberFormat("th-TH").format(Number(value) || 0);
 }
 
+
+function escapeHtml(value) {
+  return String(value === null || value === undefined ? "" : value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 function getStatusInfo(average, target) {
   const value = Number(average);
 
@@ -410,9 +472,30 @@ function getStatusInfo(average, target) {
   return {
     label: "ต่ำกว่า Target",
     className: "is-warning",
-    gapText: `ต่ำกว่าเป้า ${formatNumber(gap)}`,
+    gapText: `ต่ำกว่าเป้า ${formatNumber(Math.abs(gap))}`,
     progress,
   };
+}
+
+function getSimpleTargetDirection(average, target) {
+  const value = Number(average);
+  const goal = Number(target);
+
+  if (!Number.isFinite(value) || value <= 0 || !Number.isFinite(goal) || goal <= 0) {
+    return "ไม่มีข้อมูล";
+  }
+
+  const gap = Math.round(value - goal);
+
+  if (gap > 0) {
+    return `สูงกว่า Target +${formatNumber(gap)} Pick/Hr`;
+  }
+
+  if (gap < 0) {
+    return `ต่ำกว่า Target ${formatNumber(Math.abs(gap))} Pick/Hr`;
+  }
+
+  return "เท่ากับ Target";
 }
 
 function createSummaryFromKpi(kpi, target, fallbackTotalRows = 0, fallbackExcluded = 0) {
@@ -433,6 +516,44 @@ function createSummaryFromKpi(kpi, target, fallbackTotalRows = 0, fallbackExclud
   };
 }
 
+
+function createEmptyPickerSummary() {
+  return { total: 0, top: [], bottom: [] };
+}
+
+function normalizePickerSummary(pickers) {
+  if (!pickers || typeof pickers !== "object") {
+    return createEmptyPickerSummary();
+  }
+
+  const normalizeRows = (items) => (Array.isArray(items) ? items : [])
+    .filter((item) => item && Number(item.count || 0) > 0)
+    .map((item, index) => ({
+      key: item.key || item.userId || item.name || `picker-${index + 1}`,
+      rank: Number(item.rank || index + 1),
+      userId: item.userId || "",
+      name: item.name || item.userId || "ไม่ระบุชื่อ",
+      average: Number(item.average || 0),
+      count: Number(item.count || 0),
+      totalPick: Number(item.totalPick || item.pickTotal || item.total || 0),
+      target: Number(item.target || TARGETS.overall),
+      gap: Number(item.gap || 0),
+      status: item.status || "",
+      mainShift: item.mainShift || "ไม่ระบุกะ",
+      mainAffiliation: item.mainAffiliation || "ไม่ระบุสังกัด",
+      mainBu: item.mainBu || "-",
+      mainPickType: item.mainPickType || "-",
+      mainZone: item.mainZone || "ไม่ระบุ Zone",
+    }));
+
+  const top = normalizeRows(pickers.top);
+  const bottom = normalizeRows(pickers.bottom);
+  return {
+    total: Number(pickers.total || Math.max(top.length, bottom.length, 0)),
+    top,
+    bottom,
+  };
+}
 function normalizeDashboardPayload(payload) {
   if (!payload || payload.ok === false) {
     return payload;
@@ -445,9 +566,12 @@ function normalizeDashboardPayload(payload) {
       bu: Array.isArray(payload.bu) ? payload.bu : [],
       shifts: Array.isArray(payload.shifts) ? payload.shifts : [],
       training: Array.isArray(payload.training) ? payload.training : [],
+      totalPick: Number(payload.totalPick || 0),
+      pickers: normalizePickerSummary(payload.pickers),
       needsZoneApiUpdate: !Array.isArray(payload.zones),
       needsBuApiUpdate: !Array.isArray(payload.bu),
       needsShiftApiUpdate: !Array.isArray(payload.shifts),
+      needsPickerApiUpdate: !payload.pickers,
     };
   }
 
@@ -476,6 +600,8 @@ function normalizeDashboardPayload(payload) {
     bu: [],
     shifts: [],
     training: [],
+    pickers: createEmptyPickerSummary(),
+    totalPick: Number(payload.totalPick || 0),
     totalRows: validRows,
     filteredRows: validRows,
     excludedSamples: [],
@@ -483,9 +609,78 @@ function normalizeDashboardPayload(payload) {
 }
 
 function setText(element, value) {
-  if (element) {
-    element.textContent = value;
+  if (!element) return;
+  // if element is numeric and marked for animation, animate the number
+  const asNumber = Number(String(value).replace(/[^0-9\-\.]/g, ""));
+  if (!Number.isNaN(asNumber) && (element.dataset.animate === "number" || element.classList.contains("count-animate"))) {
+    animateNumber(element, asNumber, String(value));
+    return;
   }
+
+  element.textContent = value;
+}
+
+// Animate numeric change: element, numeric target, optional display string
+function animateNumber(element, targetNumber, displayString) {
+  try {
+    const start = Number((element.dataset._animatedStart != null) ? element.dataset._animatedStart : Number(element.textContent.replace(/[^0-9\-\.]/g, "")) || 0);
+    const duration = 600;
+    const startTs = performance.now();
+
+    function step(now) {
+      const t = Math.min(1, (now - startTs) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const value = Math.round(start + (targetNumber - start) * eased);
+      element.textContent = displayString && /\D/.test(String(displayString)) ? String(displayString).replace(/[-0-9,.]+/, value) : String(value);
+      if (t < 1) requestAnimationFrame(step);
+      else { element.dataset._animatedStart = targetNumber; }
+    }
+
+    requestAnimationFrame(step);
+  } catch (e) {
+    element.textContent = displayString || String(targetNumber);
+  }
+}
+
+// ---------------- IndexedDB simple cache ----------------
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    try {
+      const req = indexedDB.open('pickDashboard', 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains('cache')) db.createObjectStore('cache');
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    } catch (e) { reject(e); }
+  });
+}
+
+async function idbPut(key, value) {
+  try {
+    const db = await idbOpen();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('cache', 'readwrite');
+      const store = tx.objectStore('cache');
+      const r = store.put(value, key);
+      r.onsuccess = () => { resolve(true); db.close(); };
+      r.onerror = () => { reject(r.error); db.close(); };
+    });
+  } catch (e) { console.warn('IDB put failed', e); }
+}
+
+async function idbGet(key) {
+  try {
+    const db = await idbOpen();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('cache', 'readonly');
+      const store = tx.objectStore('cache');
+      const r = store.get(key);
+      r.onsuccess = () => { resolve(r.result); db.close(); };
+      r.onerror = () => { reject(r.error); db.close(); };
+    });
+  } catch (e) { console.warn('IDB get failed', e); }
 }
 
 function updateStaticTargetLabels() {
@@ -547,6 +742,11 @@ function applyCurrentTargets(payload) {
 
   (Array.isArray(payload.training) ? payload.training : []).forEach((item) => {
     item.target = TARGETS.training;
+  });
+
+  payload.pickers = normalizePickerSummary(payload.pickers);
+  ["top", "bottom"].forEach((groupKey) => {
+    payload.pickers[groupKey].forEach((item) => applyTargetToSummary(item, TARGETS.overall));
   });
 
   return payload;
@@ -623,7 +823,7 @@ function renderOverallVisual(summary) {
   setText(gaugeValue, formatNumber(summary.average));
   setText(gaugeBadge, info.label);
 
-  setText(gaugeInsight, `${info.gapText} จาก ${formatInteger(summary.validCount || 0)} รายการที่นำมาเฉลี่ย`);
+  setText(gaugeInsight, getSimpleTargetDirection(summary.average, TARGETS.overall));
 
   if (gaugeBadge) {
     gaugeBadge.className = `status-pill ${info.className}`;
@@ -849,62 +1049,38 @@ function summarizeTraining(trainingItems) {
 }
 
 function renderSnapshotOverview(payload) {
-  if (!snapshotGrid) return;
-
-  const overall = payload.overall || {};
-  const overallInfo = getStatusInfo(overall.average, TARGETS.overall);
-  const categoryItems = CATEGORY_CONFIG.map((config) => {
-    const data = payload.categories?.[config.key] || {};
-    const average = Number(data.average || 0);
-    return {
-      label: config.shortTitle,
-      average,
-      target: config.target,
-      ratio: config.target > 0 ? average / config.target : 0,
-    };
-  }).sort((left, right) => left.ratio - right.ratio);
-  const weakestCategory = categoryItems[0] || { label: "-", average: 0, target: 0 };
-  const shiftItems = Array.isArray(payload.shifts) ? payload.shifts.slice().filter((item) => Number(item.count || 0) > 0) : [];
-  const weakestShift = shiftItems.sort((left, right) => Number(left.average || 0) - Number(right.average || 0))[0];
-  const trainingSummary = summarizeTraining(payload.training || []);
-  const trainingRate = percentOf(trainingSummary.improved + trainingSummary.onTarget, Math.max(trainingSummary.withData, 1));
-
-  const cards = [
-    {
-      className: overallInfo.className,
-      label: "Overall",
-      value: formatNumber(overall.average),
-      note: overallInfo.gapText,
-    },
-    {
-      className: weakestCategory.average >= weakestCategory.target ? "is-good" : "is-warning",
-      label: "โฟกัส Rack / EA",
-      value: weakestCategory.label,
-      note: `Avg ${formatNumber(weakestCategory.average)} / Target ${weakestCategory.target}`,
-    },
-    {
-      className: weakestShift && Number(weakestShift.average || 0) >= TARGETS.overall ? "is-good" : "is-warning",
-      label: "โฟกัส Shift",
-      value: weakestShift ? (weakestShift.label || weakestShift.title || "ไม่ระบุกะ") : "-",
-      note: weakestShift ? `Avg ${formatNumber(weakestShift.average)} จาก ${formatInteger(weakestShift.count || 0)} รายการ` : "ยังไม่มีข้อมูล Shift",
-    },
-    {
-      className: trainingRate >= 60 ? "is-good" : trainingRate > 0 ? "is-warning" : "is-empty",
-      label: "Training ดีขึ้น/ผ่านเป้า",
-      value: `${trainingRate}%`,
-      note: `${formatInteger(trainingSummary.improved + trainingSummary.onTarget)} จาก ${formatInteger(trainingSummary.withData)} คนที่มีข้อมูล`,
-    },
-  ];
-
-  snapshotGrid.innerHTML = cards.map((card) => `
-    <article class="snapshot-card ${card.className}">
-      <span>${card.label}</span>
-      <strong>${card.value}</strong>
-      <small>${card.note}</small>
-    </article>
-  `).join("");
+  // ปิดแถว Snapshot ด้านบนถาวร เพื่อไม่ให้ 4 การ์ดเก่ากลับมาอีก
+  if (snapshotGrid) {
+    snapshotGrid.innerHTML = "";
+    snapshotGrid.hidden = true;
+  }
 }
 
+
+
+function renderOverviewTrainingKpi(trainingItems) {
+  if (!overviewTrainingPositiveRate && !overviewTrainingPositiveNote) return;
+
+  const summary = summarizeTraining(trainingItems || []);
+  const positive = Number(summary.improved || 0) + Number(summary.onTarget || 0);
+  const withData = Number(summary.withData || 0);
+  const rate = percentOf(positive, Math.max(withData, 1));
+  const hasData = withData > 0;
+  const className = !hasData ? "is-empty" : rate >= 60 ? "is-good" : "is-warning";
+
+  if (overviewTrainingCard) {
+    overviewTrainingCard.classList.remove("is-good", "is-warning", "is-empty");
+    overviewTrainingCard.classList.add(className);
+  }
+
+  setText(overviewTrainingPositiveRate, hasData ? `${rate}%` : "-");
+  setText(
+    overviewTrainingPositiveNote,
+    hasData
+      ? `${formatInteger(positive)} จาก ${formatInteger(withData)} คนที่มีข้อมูล`
+      : "ยังไม่มีข้อมูล Training"
+  );
+}
 
 function getPresentRangeLabel() {
   const start = startDateInput?.value ? toDdMmYyyyFromInput(startDateInput.value) : "";
@@ -915,6 +1091,34 @@ function getPresentRangeLabel() {
   if (selectedRange === "today") return "Today Summary";
   if (selectedRange === "custom" && (start || end)) return `${start || "เริ่มต้น"} ถึง ${end || "ล่าสุด"}`;
   return "All Data Summary";
+}
+
+function getOverviewTotalPickRangeText(payload = {}) {
+  const rangeInfo = payload.totalPickRange || {};
+  const diagnostics = payload.filterDiagnostics || {};
+  const inputStart = startDateInput?.value ? toDdMmYyyyFromInput(startDateInput.value) : "";
+  const inputEnd = endDateInput?.value ? toDdMmYyyyFromInput(endDateInput.value) : "";
+
+  const start = rangeInfo.startDate || diagnostics.firstMatchedDate || inputStart || "";
+  const end = rangeInfo.endDate || diagnostics.lastMatchedDate || inputEnd || "";
+
+  if (start && end && start === end) {
+    return `ยอดของวันที่ ${start}`;
+  }
+
+  if (start && end) {
+    return `ยอดตั้งแต่ ${start} ถึง ${end}`;
+  }
+
+  if (start) {
+    return `ยอดตั้งแต่ ${start} ถึงล่าสุด`;
+  }
+
+  if (end) {
+    return `ยอดถึงวันที่ ${end}`;
+  }
+
+  return "ยอดจากช่วงข้อมูลทั้งหมด";
 }
 
 function getCategoryInsightItems(categories) {
@@ -985,6 +1189,10 @@ function renderPresentSummary(payload) {
   const overallGapText = overallAverage >= TARGETS.overall
     ? `สูงกว่า Target ${formatNumber(overallAverage - TARGETS.overall)} Pick/Hr`
     : `ต่ำกว่า Target ${formatNumber(TARGETS.overall - overallAverage)} Pick/Hr`;
+  const previousOverallAverage = Number(payload.previousPayload?.overall?.average || 0);
+  const comparisonSentence = payload.previousPayload && previousOverallAverage > 0
+    ? `${getComparisonMeta(payload).label || "เทียบวันก่อน"}: ${formatCompareDelta(overallAverage - previousOverallAverage, "Pick/Hr")}${formatTargetContext(overallAverage, TARGETS.overall, "Pick/Hr")}`
+    : `${getComparisonMeta(payload).label || "เทียบวันก่อน"}: ยังไม่มีข้อมูลเทียบ${formatTargetContext(overallAverage, TARGETS.overall, "Pick/Hr")}`;
   const mainFocus = weakestCategory
     ? `${weakestCategory.label} Avg ${formatNumber(weakestCategory.average)} / Target ${weakestCategory.target}`
     : "ยังไม่มีข้อมูล Rack / EA";
@@ -1014,11 +1222,11 @@ function renderPresentSummary(payload) {
 
   setText(
     presentNarrative,
-    `ภาพรวมช่วง ${presentRange} อยู่ที่ Avg ${formatNumber(overallAverage)} Pick/Hr (${overallGapText}). จุดโฟกัสหลักคือ ${mainFocus}. ${shiftSentence}. ${trainingSentence}.`
+    `ภาพรวมช่วง ${presentRange} อยู่ที่ Avg ${formatNumber(overallAverage)} Pick/Hr (${overallGapText}). ${comparisonSentence}. จุดโฟกัสหลักคือ ${mainFocus}. ${shiftSentence}. ${trainingSentence}.`
   );
 
   const kpiCards = [
-    { label: "Overall", value: formatNumber(overallAverage), note: overallGapText, className: overallInfo.className },
+    { label: "Overall", value: formatNumber(overallAverage), note: `${overallGapText} · ${comparisonSentence}`, className: overallInfo.className },
     { label: "Rack / EA ที่ควรโฟกัส", value: weakestCategory?.label || "-", note: weakestCategory ? `ต่ำ/สูงกว่าเป้า ${formatSignedNumber(weakestCategory.gap)}` : "ยังไม่มีข้อมูล", className: weakestCategory && weakestCategory.gap >= 0 ? "is-good" : "is-warning" },
     { label: "Shift ที่ควรดู", value: weakestShift ? (weakestShift.label || weakestShift.title || "-") : "-", note: weakestShift ? `Avg ${formatNumber(weakestShift.average)} · ${formatInteger(weakestShift.count || 0)} รายการ` : "ยังไม่มีข้อมูล", className: weakestShift && Number(weakestShift.average || 0) >= TARGETS.overall ? "is-good" : "is-warning" },
     { label: "Training ดีขึ้น/ผ่านเป้า", value: `${trainingPositiveRate}%`, note: `${formatInteger(trainingPositive)} จาก ${formatInteger(trainingSummary.withData)} คน`, className: trainingPositiveRate >= 60 ? "is-good" : trainingPositiveRate > 0 ? "is-warning" : "is-empty" },
@@ -1156,18 +1364,24 @@ function renderTrainingFocusList(trainingItems) {
     </div>
   `).join("");
 }
-function renderOverall(summary) {
+function renderOverall(summary, payload = {}) {
   const info = getStatusInfo(summary.average, TARGETS.overall);
 
   overallCard.classList.remove("is-good", "is-warning", "is-empty");
   overallCard.classList.add(info.className);
   overallAverage.textContent = formatNumber(summary.average);
   overallStatus.textContent = info.label;
-  overallGap.textContent = info.gapText;
+  overallGap.textContent = getSimpleTargetDirection(summary.average, TARGETS.overall);
   overallProgress.style.width = `${Math.min(info.progress, 100)}%`;
-  validRows.textContent = formatInteger(summary.validCount || 0);
-  totalRows.textContent = formatInteger(summary.totalRows || 0);
-  excludedRows.textContent = `ตัดออก ${formatInteger(summary.excludedCount || 0)} รายการ`;
+  const totalPickValue = Number(payload.totalPick || 0);
+  if (overviewTotalPick) overviewTotalPick.textContent = totalPickValue > 0 ? formatInteger(totalPickValue) : "-";
+  if (overviewTotalPickNote) {
+    overviewTotalPickNote.innerHTML = `${escapeHtml(getOverviewTotalPickRangeText(payload))}${getCompareNoteHtml(totalPickValue, payload.previousPayload?.totalPick, payload, "รายการ")}`;
+  }
+  const overallCompare = getCompareNoteHtml(summary.average, payload.previousPayload?.overall?.average, payload, "Pick/Hr", TARGETS.overall);
+  const existingOverallCompare = overallCard.querySelector(".compare-note");
+  if (existingOverallCompare) existingOverallCompare.remove();
+  overallCard.insertAdjacentHTML("beforeend", overallCompare);
 
   // อัพเดต Sidebar KPI mini
   const sidebarOverall = document.querySelector("#sidebarOverall");
@@ -1181,7 +1395,7 @@ function renderOverall(summary) {
   }
 }
 
-function renderCategoryCards(categories) {
+function renderCategoryCards(categories, payload = {}) {
   categoryGrid.textContent = "";
 
   CATEGORY_CONFIG.forEach((config) => {
@@ -1204,6 +1418,7 @@ function renderCategoryCards(categories) {
         <span>${info.gapText}</span>
         <span>${formatInteger(data.count || 0)} รายการ</span>
       </div>
+      ${getCompareNoteHtml(data.average, payload.previousPayload?.categories?.[config.key]?.average, payload, "Pick/Hr", config.target)}
     `;
     categoryGrid.appendChild(card);
   });
@@ -1237,7 +1452,7 @@ function renderShiftAffiliations(affiliations) {
   return `<div class="shift-affiliation-list">${rows}</div>`;
 }
 
-function renderShiftBreakdown(shifts) {
+function renderShiftBreakdown(shifts, payload = {}) {
   if (!shiftGrid) {
     return;
   }
@@ -1276,6 +1491,7 @@ function renderShiftBreakdown(shifts) {
         <span>${info.gapText}</span>
         <span>${formatInteger(item.count || 0)} รายการ</span>
       </div>
+      ${getCompareNoteHtml(item.average, findByLabel(payload.previousPayload?.shifts, item.label || item.title)?.average, payload, "Pick/Hr", target)}
       ${affiliationRows}
     `;
     shiftGrid.appendChild(card);
@@ -1311,7 +1527,7 @@ function renderBuDetailRows(details) {
   return `<div class="bu-detail-list">${rows}</div>`;
 }
 
-function renderBuBreakdown(buItems) {
+function renderBuBreakdown(buItems, payload = {}) {
   if (!buGrid) {
     return;
   }
@@ -1350,13 +1566,14 @@ function renderBuBreakdown(buItems) {
         <span>${info.gapText}</span>
         <span>${formatInteger(item.count || 0)} รายการ</span>
       </div>
+      ${getCompareNoteHtml(item.average, findByKey(payload.previousPayload?.bu, item.key)?.average, payload, "Pick/Hr", target)}
       ${detailRows}
     `;
     buGrid.appendChild(card);
   });
 }
 
-function renderZoneBreakdown(zoneGroups) {
+function renderZoneBreakdown(zoneGroups, payload = {}) {
   if (!zoneBreakdownGrid) return;
   zoneBreakdownGrid.textContent = "";
 
@@ -1468,6 +1685,7 @@ function renderZoneBreakdown(zoneGroups) {
           <span class="zone-card-gap ${info.className}">${info.gapText}</span>
           <span class="zone-card-count">${formatInteger(zone.count || 0)} รายการ</span>
         </div>
+        ${getCompareNoteHtml(zone.average, findByKey(findByKey(payload.previousPayload?.zones, group.key)?.zones, zone.key)?.average, payload, "Pick/Hr", zone.target || group.target)}
 
         ${weightLabel ? `<div class="zone-card-weight">
           <span>Weight</span><strong>${weightLabel}</strong>
@@ -1482,7 +1700,98 @@ function renderZoneBreakdown(zoneGroups) {
 }
 
 
-function renderTrainingBreakdown(trainingItems) {
+
+function renderPickerBoard(kind, title, subtitle, rows, emptyText, payload = {}) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const maxAverage = Math.max(...safeRows.map((item) => Number(item.average || 0)), TARGETS.overall, 1);
+
+  if (safeRows.length === 0) {
+    return `
+      <article class="picker-board is-empty">
+        <div class="picker-board-head">
+          <div>
+            <p class="visual-card-eyebrow">${escapeHtml(kind)}</p>
+            <h2 class="visual-card-title">${escapeHtml(title)}</h2>
+          </div>
+          <span class="status-pill is-empty">0 คน</span>
+        </div>
+        <div class="picker-empty-state">${escapeHtml(emptyText)}</div>
+      </article>
+    `;
+  }
+
+  const rowsHtml = safeRows.map((item, index) => {
+    const target = Number(item.target || TARGETS.overall);
+    const info = getStatusInfo(item.average, target);
+    const width = Math.min((Number(item.average || 0) / maxAverage) * 100, 100);
+    const sampleClass = Number(item.count || 0) < 3 ? " is-low-sample" : "";
+    const rankLabel = kind === "TOP PICK" ? `#${index + 1}` : `Focus ${index + 1}`;
+
+    return `
+      <div class="picker-row ${info.className}${sampleClass}">
+        <div class="picker-rank">${rankLabel}</div>
+        <div class="picker-main">
+          <div class="picker-person-card">
+            <div class="picker-person-name">
+              <span class="picker-person-label">Name</span>
+              <strong>${escapeHtml(item.name || "ไม่ระบุชื่อ")}</strong>
+            </div>
+            <div class="picker-person-id">
+              <span class="picker-person-label">User ID</span>
+              <strong>${escapeHtml(item.userId || "-")}</strong>
+            </div>
+          </div>
+          <div class="picker-meta-line">
+            <span class="picker-meta-zone"><b>Zone</b> ${escapeHtml(item.mainZone || "ไม่ระบุ Zone")}</span>
+            <span><b>Shift</b> ${escapeHtml(item.mainShift || "ไม่ระบุกะ")}</span>
+            <span><b>สังกัด</b> ${escapeHtml(item.mainAffiliation || "ไม่ระบุสังกัด")}</span>
+            <span><b>BU</b> ${escapeHtml(item.mainBu || "-")}</span>
+            <span><b>Type</b> ${escapeHtml(item.mainPickType || "-")}</span>
+          </div>
+          <div class="picker-bar-track">
+            <i class="${info.className}" style="width:${width}%"></i>
+          </div>
+        </div>
+        <div class="picker-score">
+          <div class="picker-score-block">
+            <strong>${formatNumber(item.average)}</strong>
+            <span>Productivity</span>
+          </div>
+          <div class="picker-score-block picker-score-block-secondary">
+            <strong>${formatInteger(item.totalPick || 0)}</strong>
+            <span>Total pick</span>
+          </div>
+          <div class="picker-score-gap ${info.className}">${info.gapText}</div>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <article class="picker-board ${kind === "TOP PICK" ? "is-top" : "is-bottom"}">
+      <div class="picker-board-head">
+        <div>
+          <p class="visual-card-eyebrow">${escapeHtml(kind)}</p>
+          <h2 class="visual-card-title">${escapeHtml(title)}</h2>
+          <small>${escapeHtml(subtitle)}</small>
+        </div>
+        <span class="status-pill ${kind === "TOP PICK" ? "is-good" : "is-warning"}">${safeRows.length} คน</span>
+      </div>
+      <div class="picker-list">${rowsHtml}</div>
+    </article>
+  `;
+}
+
+function renderPickerRankings(pickers, payload = {}) {
+  if (!pickerGrid) return;
+
+  const summary = normalizePickerSummary(pickers);
+  pickerGrid.innerHTML = `
+    ${renderPickerBoard("TOP PICK", "คนที่ทำ Productivity สูงสุด", "เรียงจาก Avg Pick/Hr สูงไปต่ำ ใช้ Column AF", summary.top, "ยังไม่มีข้อมูล Top Pick", payload)}
+    ${renderPickerBoard("BOTTOM PICK", "คนที่ควรโฟกัสก่อน", "เรียงจาก Avg Pick/Hr ต่ำไปสูง เพื่อใช้ติดตามรายคน", summary.bottom, "ยังไม่มีข้อมูล Bottom Pick", payload)}
+  `;
+}
+function renderTrainingBreakdown(trainingItems, payload = {}) {
   if (!trainingGrid) {
     return;
   }
@@ -1561,6 +1870,7 @@ function renderTrainingBreakdown(trainingItems) {
         <span>${item.smartNote || trendInfo.message}</span>
         <strong>${item.smartApplied ? "Smart" : targetInfo.label}</strong>
       </div>
+      ${getCompareNoteHtml(item.average, findPreviousTraining(payload, item)?.average, payload, "Pick/Hr", target)}
     `;
     trainingGrid.appendChild(card);
   });
@@ -1610,16 +1920,121 @@ function createRawBuSummary() {
   }, {});
 }
 
+
+function createRawPickerSummary() {
+  return {};
+}
+
+function normalizeRawPickerKey(item, fallbackKey) {
+  return String(item?.userId || fallbackKey || item?.name || "").trim();
+}
+
+function mergeCountMap(target, source) {
+  Object.keys(source || {}).forEach((key) => {
+    target[key] = Number(target[key] || 0) + Number(source[key] || 0);
+  });
+}
+
+function mergePickerSummary(targetPickers, sourcePickers) {
+  Object.keys(sourcePickers || {}).forEach((sourceKey) => {
+    const source = sourcePickers[sourceKey] || {};
+    const key = normalizeRawPickerKey(source, sourceKey);
+
+    if (!key) {
+      return;
+    }
+
+    if (!targetPickers[key]) {
+      targetPickers[key] = {
+        userId: source.userId || "",
+        name: source.name || source.userId || "ไม่ระบุชื่อ",
+        sum: 0,
+        count: 0,
+        totalPick: 0,
+        shifts: {},
+        affiliations: {},
+        bu: {},
+        pickTypes: {},
+        zones: {},
+      };
+    }
+
+    const target = targetPickers[key];
+    target.sum += Number(source.sum || 0);
+    target.count += Number(source.count || 0);
+    target.totalPick += Number(source.totalPick || 0);
+
+    if (source.name && (!target.name || /^User ID/i.test(target.name))) {
+      target.name = source.name;
+    }
+
+    mergeCountMap(target.shifts, source.shifts);
+    mergeCountMap(target.affiliations, source.affiliations);
+    mergeCountMap(target.bu, source.bu);
+    mergeCountMap(target.pickTypes, source.pickTypes);
+    mergeCountMap(target.zones, source.zones);
+  });
+}
+
+function topCountLabel(map, fallback) {
+  const keys = Object.keys(map || {});
+
+  if (keys.length === 0) {
+    return fallback || "-";
+  }
+
+  return keys.sort((left, right) => {
+    const countDiff = Number(map[right] || 0) - Number(map[left] || 0);
+    return countDiff || left.localeCompare(right, "th");
+  })[0];
+}
+
+function finalizeRawPickers(rawPickers) {
+  const rows = Object.keys(rawPickers || {}).map((key) => {
+    const item = rawPickers[key] || {};
+    const count = Number(item.count || 0);
+    const average = count > 0 ? Number(item.sum || 0) / count : 0;
+
+    return {
+      key,
+      userId: item.userId || "",
+      name: item.name || item.userId || "ไม่ระบุชื่อ",
+      average: round1(average),
+      count,
+      totalPick: Math.round(Number(item.totalPick || 0)),
+      target: TARGETS.overall,
+      gap: round1(average - TARGETS.overall),
+      status: average >= TARGETS.overall ? "ผ่าน Target" : "ต่ำกว่า Target",
+      mainShift: topCountLabel(item.shifts, "ไม่ระบุกะ"),
+      mainAffiliation: topCountLabel(item.affiliations, "ไม่ระบุสังกัด"),
+      mainBu: topCountLabel(item.bu, "-"),
+      mainPickType: topCountLabel(item.pickTypes, "-"),
+      mainZone: topCountLabel(item.zones, "ไม่ระบุ Zone"),
+    };
+  }).filter((item) => item.count > 0);
+
+  const addRank = (items) => items.map((item, index) => ({ ...item, rank: index + 1 }));
+  const top = rows.slice().sort((left, right) => Number(right.average || 0) - Number(left.average || 0) || Number(right.count || 0) - Number(left.count || 0) || left.name.localeCompare(right.name, "th"));
+  const bottom = rows.slice().sort((left, right) => Number(left.average || 0) - Number(right.average || 0) || Number(right.count || 0) - Number(left.count || 0) || left.name.localeCompare(right.name, "th"));
+
+  return {
+    total: rows.length,
+    top: addRank(top.slice(0, 10)),
+    bottom: addRank(bottom.slice(0, 10)),
+  };
+}
 function createCombinedDailySummary() {
   return {
     filteredRows: 0,
     excludedCount: 0,
+    totalPick: 0,
     overall: createRawBucket(),
     categories: createRawCategorySummary(),
     zones: createRawZoneSummary(),
     bu: createRawBuSummary(),
     shifts: {},
     training: createRawTrainingSummary(),
+    pickers: createRawPickerSummary(),
   };
 }
 
@@ -1666,6 +2081,7 @@ function mergeShiftSummary(targetShifts, sourceShifts) {
 function mergeDailySummary(combined, day) {
   combined.filteredRows += Number(day.filteredRows || 0);
   combined.excludedCount += Number(day.excludedCount || 0);
+  combined.totalPick += Number(day.totalPick || 0);
   addRawBucket(combined.overall, day.overall);
 
   Object.keys(combined.categories).forEach((key) => {
@@ -1688,6 +2104,7 @@ function mergeDailySummary(combined, day) {
 
   mergeShiftSummary(combined.shifts, day.shifts || {});
   mergeTrainingSummary(combined.training, day.training || {});
+  mergePickerSummary(combined.pickers, day.pickers || {});
 }
 
 function finalizeDailyZones(rawZones) {
@@ -1996,6 +2413,13 @@ function buildDashboardFromDailyIndex(indexPayload) {
     bu: finalizeDailyBu(combined.bu),
     shifts: finalizeDailyShifts(combined.shifts),
     training: finalizeTrainingFromRaw(trainingCombined),
+    pickers: finalizeRawPickers(combined.pickers),
+    totalPick: combined.totalPick,
+    totalPickRange: {
+      startDate: selectedKeys.length > 0 ? isoToDmy(selectedKeys[0]) : "",
+      endDate: selectedKeys.length > 0 ? isoToDmy(selectedKeys[selectedKeys.length - 1]) : "",
+      sourceColumn: "C",
+    },
     totalRows: combined.filteredRows,
     filteredRows: combined.filteredRows,
     filterDiagnostics: {
@@ -2140,9 +2564,11 @@ function renderDashboard(rawPayload, options = {}) {
 
   // Fast path: render critical UI immediately for perceived speed
   updateStaticTargetLabels();
-  renderOverall(payload.overall || {});
+  renderOverall(payload.overall || {}, payload);
+  updateActiveDateBanner(payload, options);
   renderSnapshotOverview(payload);
   renderPresentSummary(payload);
+  renderPickerRankings(payload.pickers || {}, payload);
 
   // Update sync status right away
   if (options.updateStatus !== false) {
@@ -2154,13 +2580,44 @@ function renderDashboard(rawPayload, options = {}) {
   try { hideLoadingModal(); } catch (e) {}
 
   // Defer heavier renders to idle time so initial paint is fast
+  const setupLazyObservers = (p) => {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        const target = entry.target;
+        try {
+          if (target === categoryGrid) renderCategoryCards(p.categories || {}, p);
+          if (target === shiftGrid) renderShiftBreakdown(p.shifts || [], p);
+          if (target === buGrid) renderBuBreakdown(p.bu || [], p);
+          if (target === trainingGrid) renderTrainingBreakdown(p.training || [], p);
+          if (target === pickerGrid) renderPickerRankings(p.pickers || {}, p);
+          if (target === zoneBreakdownGrid) renderZoneBreakdown(p.zones || [], p);
+        } catch (e) { console.warn(e); }
+        observer.unobserve(target);
+      });
+    }, { root: null, rootMargin: '300px', threshold: 0.01 });
+
+    [categoryGrid, shiftGrid, buGrid, trainingGrid, pickerGrid, zoneBreakdownGrid].forEach((el) => {
+      if (!el) return;
+      // if already has content, render immediately
+      if (el.children.length > 0 && !Array.from(el.children).some(c => c.classList.contains('skeleton-card'))) {
+        try {
+          if (el === categoryGrid) renderCategoryCards(p.categories || {}, p);
+          if (el === shiftGrid) renderShiftBreakdown(p.shifts || [], p);
+          if (el === buGrid) renderBuBreakdown(p.bu || [], p);
+          if (el === trainingGrid) renderTrainingBreakdown(p.training || [], p);
+          if (el === pickerGrid) renderPickerRankings(p.pickers || {}, p);
+          if (el === zoneBreakdownGrid) renderZoneBreakdown(p.zones || [], p);
+        } catch (e) { console.warn(e); }
+      } else {
+        observer.observe(el);
+      }
+    });
+  };
+
   const doDeferred = () => {
     try { renderVisualOverview(payload); } catch (e) { console.warn(e); }
-    try { renderCategoryCards(payload.categories || {}); } catch (e) { console.warn(e); }
-    try { renderShiftBreakdown(payload.shifts || []); } catch (e) { console.warn(e); }
-    try { renderBuBreakdown(payload.bu || []); } catch (e) { console.warn(e); }
-    try { renderTrainingBreakdown(payload.training || []); } catch (e) { console.warn(e); }
-    try { renderZoneBreakdown(payload.zones || []); } catch (e) { console.warn(e); }
+    try { setupLazyObservers(payload); } catch (e) { console.warn(e); }
     if (payload.trainingDebug) console.log("TRAINING DEBUG", payload.trainingDebug);
   };
 
@@ -2179,14 +2636,31 @@ function renderDashboard(rawPayload, options = {}) {
 
 function renderDashboardFromLocalCache() {
   try {
-    const cachedText = localStorage.getItem(getDashboardCacheKey());
-
+    const cacheKey = getDashboardCacheKey();
+    const cachedText = localStorage.getItem(cacheKey);
     if (!cachedText) {
+      // still try to load from IndexedDB in background
+      idbGet(cacheKey).then((idbPayload) => {
+        if (idbPayload) renderDashboard(idbPayload, { sourceLabel: "แสดงจาก IndexedDB" });
+      }).catch(() => {});
       return false;
     }
 
     const payload = JSON.parse(cachedText);
     renderDashboard(payload, { sourceLabel: "แสดงทันทีจากเครื่อง" });
+
+    // try to upgrade from IndexedDB in background
+    idbGet(cacheKey).then((idbPayload) => {
+      if (idbPayload) {
+        try {
+          // if different generatedAt or elapsed, render the better one
+          if (idbPayload.generatedAt && idbPayload.generatedAt !== payload.generatedAt) {
+            renderDashboard(idbPayload, { sourceLabel: "แสดงจาก IndexedDB" });
+          }
+        } catch (e) { /* ignore */ }
+      }
+    }).catch(() => {});
+
     return true;
   } catch (error) {
     console.warn(error);
@@ -2197,7 +2671,13 @@ function renderDashboardFromLocalCache() {
 
 function saveDashboardToLocalCache(payload) {
   try {
-    localStorage.setItem(getDashboardCacheKey(), JSON.stringify(normalizeDashboardPayload(payload)));
+    const normalized = normalizeDashboardPayload(payload);
+    const cachePayload = { ...normalized };
+    delete cachePayload.previousPayload;
+    delete cachePayload.comparisonMeta;
+    localStorage.setItem(getDashboardCacheKey(), JSON.stringify(cachePayload));
+    // also persist to IndexedDB for larger/offline cache
+    try { idbPut(getDashboardCacheKey(), normalized); } catch (e) { /* ignore */ }
   } catch (error) {
     console.warn(error);
   }
@@ -2219,7 +2699,44 @@ async function fetchJsonWithTimeout(url, timeoutMs) {
       throw new Error(`API request failed: ${response.status}`);
     }
 
-    return response.json();
+    // try to stream response and report progress
+    const contentLength = response.headers.get('content-length');
+    if (!response.body) {
+      return response.json();
+    }
+
+    const reader = response.body.getReader();
+    const chunks = [];
+    let received = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        chunks.push(value);
+        received += value.length || value.byteLength || 0;
+        if (contentLength) {
+          const pct = Math.min(99, (received / Number(contentLength)) * 100);
+          try { setLoadingProgress(pct); } catch (e) {}
+        } else {
+          // heuristic - grow until near-complete
+          const pct = Math.min(95, (received / 60000) * 100);
+          try { setLoadingProgress(pct); } catch (e) {}
+        }
+      }
+    }
+
+    // concatenate
+    const totalLen = chunks.reduce((s, c) => s + (c.length || c.byteLength || 0), 0);
+    const tmp = new Uint8Array(totalLen);
+    let offset = 0;
+    for (const c of chunks) {
+      tmp.set(c, offset);
+      offset += c.length || c.byteLength || 0;
+    }
+
+    const text = new TextDecoder().decode(tmp);
+    return JSON.parse(text);
   } finally {
     clearTimeout(timeoutId);
     currentRequest = null;
@@ -2323,8 +2840,25 @@ async function loadDashboard(options = {}) {
   }
 
   try {
-    const payload = await fetchDashboardPayload({ force });
-    const normalizedPayload = renderDashboard(payload);
+    let payload = await fetchDashboardPayload({ force });
+    const todayKey = getRelativeDateInputValue(0);
+    const isSingleTodayRequest = selectedRange === "today"
+      && startDateInput?.value === todayKey
+      && endDateInput?.value === todayKey;
+
+    if (isSingleTodayRequest && !hasDashboardData(normalizeDashboardPayload(payload))) {
+      const yesterdayKey = getRelativeDateInputValue(-1);
+      selectedRange = "autoYesterday";
+      setDateFilterToSingleDay(yesterdayKey);
+      syncQuickFilterActiveState();
+      setSyncStatus("วันนี้ยังไม่มีข้อมูล กำลังโหลดข้อมูลของเมื่อวานแทน...");
+      payload = await fetchDashboardPayload({ force });
+    }
+
+    const sourceLabel = selectedRange === "autoYesterday" ? "แสดงเมื่อวานแทน" : undefined;
+    let preparedPayload = applyCurrentTargets(normalizeDashboardPayload(payload));
+    preparedPayload = await attachComparisonPayload(preparedPayload, { force });
+    const normalizedPayload = renderDashboard(preparedPayload, { sourceLabel });
     saveDashboardToLocalCache(normalizedPayload);
 
     // complete progress and hide
@@ -2354,6 +2888,239 @@ async function loadDashboard(options = {}) {
 function toDateInputValue(date) {
   const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return offsetDate.toISOString().slice(0, 10);
+}
+
+function getRelativeDateInputValue(dayOffset = 0) {
+  const date = new Date();
+  date.setDate(date.getDate() + dayOffset);
+  return toDateInputValue(date);
+}
+
+function formatThaiLongDateFromInput(dateKey) {
+  const match = String(dateKey || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!match) {
+    return "ยังไม่ทราบวันที่";
+  }
+
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return new Intl.DateTimeFormat("th-TH", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
+function hasDashboardData(payload) {
+  if (!payload || payload.ok === false) {
+    return false;
+  }
+
+  const diagnostics = payload.filterDiagnostics || {};
+  const overall = payload.overall || {};
+  const rowSignals = [
+    payload.filteredRows,
+    payload.totalRows,
+    payload.totalPick,
+    overall.count,
+    overall.validCount,
+    overall.totalRows,
+    diagnostics.matchedDateRows,
+  ];
+
+  return rowSignals.some((value) => Number(value || 0) > 0);
+}
+
+
+function getDateKeyOffset(dateKey, dayOffset) {
+  const match = String(dateKey || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return "";
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  date.setDate(date.getDate() + Number(dayOffset || 0));
+  return toDateInputValue(date);
+}
+
+function getDateRangeLengthDays(startDate, endDate) {
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 1;
+  return Math.max(1, Math.round((end - start) / 86400000) + 1);
+}
+
+function getComparisonRangeForCurrentFilter() {
+  const start = startDateInput?.value || "";
+  const end = endDateInput?.value || start;
+  if (!start || !end) return null;
+
+  const length = getDateRangeLengthDays(start, end);
+  const previousEnd = getDateKeyOffset(start, -1);
+  const previousStart = getDateKeyOffset(previousEnd, -(length - 1));
+
+  return {
+    startDate: previousStart,
+    endDate: previousEnd,
+    label: previousStart === previousEnd
+      ? `เทียบกับ ${isoToDmy(previousEnd)}`
+      : `เทียบกับ ${isoToDmy(previousStart)} ถึง ${isoToDmy(previousEnd)}`,
+  };
+}
+
+function getCompareClass(delta) {
+  const value = Number(delta || 0);
+  if (value > 0) return "is-up";
+  if (value < 0) return "is-down";
+  return "is-flat";
+}
+
+function formatCompareDelta(delta, unit = "Pick/Hr") {
+  const value = Math.round(Number(delta || 0));
+  if (value > 0) return `เพิ่มขึ้น +${formatNumber(value)} ${unit}`;
+  if (value < 0) return `ลดลง ${formatNumber(Math.abs(value))} ${unit}`;
+  return `เท่าเดิม 0 ${unit}`;
+}
+
+function formatTargetContext(currentValue, targetValue, unit = "Pick/Hr") {
+  const current = Number(currentValue || 0);
+  const target = Number(targetValue || 0);
+
+  if (!Number.isFinite(current) || current <= 0 || !Number.isFinite(target) || target <= 0) {
+    return "";
+  }
+
+  const gap = Math.round(current - target);
+
+  if (gap > 0) {
+    return ` · สูงกว่า Target +${formatNumber(gap)} ${unit}`;
+  }
+
+  if (gap < 0) {
+    return ` · ต่ำกว่า Target ${formatNumber(Math.abs(gap))} ${unit}`;
+  }
+
+  return ` · เท่ากับ Target`;
+}
+
+function getComparisonMeta(payload = {}) {
+  return payload.comparisonMeta || {};
+}
+
+function getCompareNoteHtml(currentValue, previousValue, payload = {}, unit = "Pick/Hr", targetValue = null) {
+  const meta = getComparisonMeta(payload);
+  const label = meta.label || "เทียบวันก่อน";
+  const current = Number(currentValue || 0);
+  const previous = Number(previousValue || 0);
+  const targetContext = targetValue ? formatTargetContext(current, targetValue, unit) : "";
+
+  if (!payload.previousPayload) {
+    return `<div class="compare-note is-empty">${label}: ยังไม่มีข้อมูลเทียบ${targetContext}</div>`;
+  }
+
+  if (!Number.isFinite(previous) || previous <= 0) {
+    return `<div class="compare-note is-empty">${label}: วันก่อนยังไม่มีข้อมูล${targetContext}</div>`;
+  }
+
+  const delta = current - previous;
+  return `<div class="compare-note ${getCompareClass(delta)}">${label}: ${formatCompareDelta(delta, unit)}${targetContext}</div>`;
+}
+
+function findByKey(items, key) {
+  return (Array.isArray(items) ? items : []).find((item) => String(item.key || "") === String(key || ""));
+}
+
+function findByLabel(items, label) {
+  const normalized = String(label || "").trim().toLowerCase();
+  return (Array.isArray(items) ? items : []).find((item) => {
+    const itemLabel = String(item.label || item.title || item.key || "").trim().toLowerCase();
+    return itemLabel === normalized;
+  });
+}
+
+function findPreviousPicker(payload, picker) {
+  const previousPickers = payload?.previousPayload?.pickers || {};
+  const rows = [
+    ...(Array.isArray(previousPickers.top) ? previousPickers.top : []),
+    ...(Array.isArray(previousPickers.bottom) ? previousPickers.bottom : []),
+  ];
+  const key = String(picker?.key || picker?.userId || "").trim();
+  return rows.find((item) => String(item.key || item.userId || "").trim() === key);
+}
+
+function findPreviousTraining(payload, trainee) {
+  const rows = payload?.previousPayload?.training || [];
+  const key = String(trainee?.userId || trainee?.key || "").trim();
+  return (Array.isArray(rows) ? rows : []).find((item) => String(item.userId || item.key || "").trim() === key);
+}
+
+async function attachComparisonPayload(currentPayload, options = {}) {
+  const range = getComparisonRangeForCurrentFilter();
+  if (!range || !range.startDate || !range.endDate) {
+    return currentPayload;
+  }
+
+  try {
+    const previousRaw = await fetchDashboardPayload({
+      force: Boolean(options.force),
+      filterStartDate: range.startDate,
+      filterEndDate: range.endDate,
+      comparison: "previous-period",
+    });
+    const previousPayload = applyCurrentTargets(normalizeDashboardPayload(previousRaw));
+
+    return {
+      ...currentPayload,
+      previousPayload,
+      comparisonMeta: range,
+    };
+  } catch (error) {
+    console.warn("Comparison load failed", error);
+    return {
+      ...currentPayload,
+      comparisonMeta: range,
+    };
+  }
+}
+
+function setDateFilterToSingleDay(dateKey) {
+  if (startDateInput) startDateInput.value = dateKey;
+  if (endDateInput) endDateInput.value = dateKey;
+}
+
+function syncQuickFilterActiveState() {
+  quickFilterButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.range === selectedRange);
+  });
+}
+
+function updateActiveDateBanner(payload = {}, options = {}) {
+  if (!activeDateBanner) return;
+
+  const start = startDateInput?.value || payload.range?.startDate || "";
+  const end = endDateInput?.value || payload.range?.endDate || start;
+  const isSingleDay = start && end && start === end;
+  const label = isSingleDay
+    ? `วันที่ ${formatThaiLongDateFromInput(start)}`
+    : getOverviewTotalPickRangeText(payload);
+
+  activeDateLabel.textContent = label;
+
+  if (selectedRange === "today") {
+    activeDateHint.textContent = `${"ระบบเลือกข้อมูลของวันนี้ให้อัตโนมัติ"} · ${getComparisonMeta(payload).label || "เทียบกับวันก่อนหน้า"}`;
+  } else if (selectedRange === "autoYesterday") {
+    activeDateHint.textContent = `${"วันนี้ยังไม่มีข้อมูล ระบบจึงแสดงข้อมูลของเมื่อวานแทน"} · ${getComparisonMeta(payload).label || "เทียบกับวันก่อนหน้า"}`;
+  } else if (selectedRange === "custom") {
+    activeDateHint.textContent = "ช่วงวันที่ที่เลือกเอง";
+  } else {
+    activeDateHint.textContent = options.sourceLabel || "ช่วงข้อมูลที่กำลังแสดงอยู่";
+  }
+
+  activeDateBanner.classList.toggle("is-fallback", selectedRange === "autoYesterday");
+}
+
+function initializeDefaultDateFilter() {
+  selectedRange = "today";
+  setDateFilterToSingleDay(getRelativeDateInputValue(0));
+  syncQuickFilterActiveState();
+  updateActiveDateBanner({}, { sourceLabel: "กำลังตรวจสอบข้อมูลวันนี้..." });
 }
 
 function normalizeDateFilterOrder() {
@@ -2403,9 +3170,8 @@ function setQuickRange(range) {
   endDateInput.value = end;
 
 
-  quickFilterButtons.forEach((button) => {
-    button.classList.toggle("active", button.dataset.range === selectedRange);
-  });
+  syncQuickFilterActiveState();
+  updateActiveDateBanner({}, { sourceLabel: "กำลังโหลดข้อมูลตามวันที่ที่เลือก..." });
 
   loadSelectedRange();
 }
@@ -2448,7 +3214,8 @@ quickFilterButtons.forEach((button) => {
 
 applyDateButton.addEventListener("click", () => {
   selectedRange = "custom";
-  quickFilterButtons.forEach((button) => button.classList.remove("active"));
+  syncQuickFilterActiveState();
+  updateActiveDateBanner({}, { sourceLabel: "กำลังโหลดข้อมูลตามวันที่ที่เลือก..." });
   loadSelectedRange();
 });
 
@@ -2467,6 +3234,12 @@ function clearPickDashboardLocalCache() {
 refreshButton.addEventListener("click", async () => {
   dailyIndexPayload = null;
   clearPickDashboardLocalCache();
+  if (selectedRange === "autoYesterday") {
+    selectedRange = "today";
+    setDateFilterToSingleDay(getRelativeDateInputValue(0));
+    syncQuickFilterActiveState();
+    updateActiveDateBanner({}, { sourceLabel: "กำลังตรวจสอบข้อมูลวันนี้อีกครั้ง..." });
+  }
   // v35: โหลด Dashboard หลักอย่างเดียวก่อน ไม่ยิง Daily Index ซ้อน เพื่อไม่ให้เว็บช้า
   await loadDashboard({ force: true });
 });
@@ -2480,6 +3253,7 @@ document.addEventListener("visibilitychange", () => {
 // v35: ไม่โหลด Daily Index ตอนเปิดเว็บ เพื่อลดเวลารอและลดโอกาส Apps Script timeout
 initializeTargetSettings();
 dailyIndexPayload = null;
+initializeDefaultDateFilter();
 const showedInitialCache = renderDashboardFromLocalCache();
 loadDashboard({ silent: showedInitialCache });
 
