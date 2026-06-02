@@ -306,6 +306,163 @@ function getTotalPickValue_(rawValue, displayValue) {
   return toNumber_(displayValue);
 }
 
+function getMonthKey_(date) {
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    return "";
+  }
+
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${date.getFullYear()}-${month}`;
+}
+
+function addMonthlyTrendValue_(monthlyTrend, rowDate, average, totalPick) {
+  const dateKey = formatDateISO_(rowDate);
+
+  if (!dateKey) {
+    return;
+  }
+
+  if (!monthlyTrend[dateKey]) {
+    monthlyTrend[dateKey] = {
+      sum: 0,
+      count: 0,
+      totalPick: 0,
+    };
+  }
+
+  monthlyTrend[dateKey].sum += Number(average || 0);
+  monthlyTrend[dateKey].count += 1;
+  monthlyTrend[dateKey].totalPick += Number(totalPick || 0);
+}
+
+function hasMonthlyTrendData_(monthlyTrend, anchorDate) {
+  const monthKey = getMonthKey_(anchorDate);
+
+  if (!monthKey) {
+    return false;
+  }
+
+  return Object.keys(monthlyTrend || {}).some(function (dateKey) {
+    return dateKey.indexOf(monthKey + "-") === 0 && Number(monthlyTrend[dateKey].count || 0) > 0;
+  });
+}
+
+function chooseMonthlyTrendAnchor_(monthlyTrend, selectedDate, startDate, endDate, latestDate) {
+  const requestedDate = selectedDate || startDate || endDate;
+
+  if (requestedDate && hasMonthlyTrendData_(monthlyTrend, requestedDate)) {
+    return requestedDate;
+  }
+
+  if (latestDate) {
+    return latestDate;
+  }
+
+  return requestedDate || new Date();
+}
+
+function getThaiMonthLabel_(date) {
+  const months = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+  return `${months[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+function finalizeMonthlyTrend_(monthlyTrend, anchorDate) {
+  let targetDate = anchorDate;
+
+  if (!(targetDate instanceof Date) || isNaN(targetDate.getTime())) {
+    const dateKeys = Object.keys(monthlyTrend || {})
+      .filter(function (dateKey) { return Number(monthlyTrend[dateKey].count || 0) > 0; })
+      .sort();
+    targetDate = dateKeys.length > 0 ? parseInputDate_(dateKeys[dateKeys.length - 1]) : new Date();
+  }
+
+  const startDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+  const endDate = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+  const daysInMonth = endDate.getDate();
+  const days = [];
+  let previousAverage = null;
+  let totalSum = 0;
+  let totalCount = 0;
+  let totalPick = 0;
+  let activeDays = 0;
+  let peakDay = null;
+  let lowDay = null;
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const date = new Date(targetDate.getFullYear(), targetDate.getMonth(), day);
+    const dateKey = formatDateISO_(date);
+    const bucket = monthlyTrend && monthlyTrend[dateKey] ? monthlyTrend[dateKey] : {};
+    const count = Number(bucket.count || 0);
+    const hasData = count > 0;
+    const rawAverage = hasData ? Number(bucket.sum || 0) / count : 0;
+    const average = hasData ? round1_(rawAverage) : null;
+    let change = null;
+    let trend = "none";
+
+    if (hasData) {
+      activeDays += 1;
+      totalSum += Number(bucket.sum || 0);
+      totalCount += count;
+      totalPick += Number(bucket.totalPick || 0);
+
+      if (previousAverage !== null) {
+        change = round1_(rawAverage - previousAverage);
+        trend = change > 0 ? "up" : change < 0 ? "down" : "flat";
+      }
+
+      previousAverage = rawAverage;
+
+      if (!peakDay || rawAverage > peakDay.rawAverage) {
+        peakDay = {
+          date: dateKey,
+          dateLabel: formatDateDMY_(date),
+          productivity: average,
+          rawAverage: rawAverage,
+        };
+      }
+
+      if (!lowDay || rawAverage < lowDay.rawAverage) {
+        lowDay = {
+          date: dateKey,
+          dateLabel: formatDateDMY_(date),
+          productivity: average,
+          rawAverage: rawAverage,
+        };
+      }
+    }
+
+    days.push({
+      date: dateKey,
+      dateLabel: formatDateDMY_(date),
+      day: day,
+      productivity: average,
+      count: count,
+      totalPick: Math.round(Number(bucket.totalPick || 0)),
+      hasData: hasData,
+      change: change,
+      trend: trend,
+    });
+  }
+
+  if (peakDay) delete peakDay.rawAverage;
+  if (lowDay) delete lowDay.rawAverage;
+
+  return {
+    month: getMonthKey_(startDate),
+    monthLabel: getThaiMonthLabel_(startDate),
+    startDate: formatDateDMY_(startDate),
+    endDate: formatDateDMY_(endDate),
+    metricLabel: "Avg Pick/Hr",
+    sourceColumn: "Results Master!C / AF",
+    average: totalCount > 0 ? round1_(totalSum / totalCount) : null,
+    activeDays: activeDays,
+    totalPick: Math.round(totalPick),
+    peakDay: peakDay,
+    lowDay: lowDay,
+    days: days,
+  };
+}
+
 function buildDailyIndexPayload_() {
   const startedAt = Date.now();
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -585,6 +742,7 @@ function buildDashboardPayload_(startDateText, endDateText) {
   const shiftSummary = createShiftSummary_();
   const pickerSummary = createPickerSummary_();
   const trainingSummary = createTrainingSummary_();
+  const monthlyTrend = {};
   seedTrainingSummary_(trainingSummary, trainingRoster);
 
   let filteredRows = 0;
@@ -592,6 +750,8 @@ function buildDashboardPayload_(startDateText, endDateText) {
   let totalPick = 0;
   let totalPickStartDate = null;
   let totalPickEndDate = null;
+  let latestMonthlyTrendDate = null;
+  let selectedMonthlyTrendDate = null;
   const filterDiagnostics = {
     enabled: shouldFilterByDate,
     sourceColumn: "C",
@@ -613,6 +773,7 @@ function buildDashboardPayload_(startDateText, endDateText) {
     const displayDateValueForTraining = dataDisplayValues[index][columnOffset.date];
     const rowDateForTraining = normalizeSheetDate_(rawDateValueForTraining, displayDateValueForTraining);
     const average = toNumber_(dataValues[index][columnOffset.average]);
+    const rowTotalPick = getTotalPickValue_(dataValues[index][columnOffset.totalPick], dataDisplayValues[index][columnOffset.totalPick]);
 
     if (average > 0) {
       addTrainingValue_(
@@ -622,6 +783,13 @@ function buildDashboardPayload_(startDateText, endDateText) {
         rowDateForTraining,
         average
       );
+
+      if (rowDateForTraining) {
+        addMonthlyTrendValue_(monthlyTrend, rowDateForTraining, average, rowTotalPick);
+        if (!latestMonthlyTrendDate || rowDateForTraining > latestMonthlyTrendDate) {
+          latestMonthlyTrendDate = rowDateForTraining;
+        }
+      }
     }
 
     if (shouldFilterByDate) {
@@ -661,7 +829,12 @@ function buildDashboardPayload_(startDateText, endDateText) {
       filterDiagnostics.lastMatchedDate = matchedText;
     }
 
-    const rowTotalPick = getTotalPickValue_(dataValues[index][columnOffset.totalPick], dataDisplayValues[index][columnOffset.totalPick]);
+    if (rowDateForTraining && average > 0) {
+      if (!selectedMonthlyTrendDate || rowDateForTraining > selectedMonthlyTrendDate) {
+        selectedMonthlyTrendDate = rowDateForTraining;
+      }
+    }
+
     filteredRows += 1;
     totalPick += rowTotalPick;
 
@@ -742,6 +915,10 @@ function buildDashboardPayload_(startDateText, endDateText) {
     shifts: finalizeShifts_(shiftSummary),
     pickers: finalizePickerSummary_(pickerSummary, TARGETS.overall),
     training: finalizeTrainingSummary_(trainingSummary),
+    monthlyTrend: finalizeMonthlyTrend_(
+      monthlyTrend,
+      chooseMonthlyTrendAnchor_(monthlyTrend, selectedMonthlyTrendDate, startDate, endDate, latestMonthlyTrendDate)
+    ),
     totalPick: totalPick,
     totalPickRange: {
       startDate: totalPickStartDate ? formatDateDMY_(totalPickStartDate) : "",
@@ -1753,6 +1930,7 @@ function emptyPayload_(startedAt, startDateText, endDateText) {
     shifts: [],
     pickers: finalizePickerSummary_(createPickerSummary_(), TARGETS.overall),
     training: [],
+    monthlyTrend: finalizeMonthlyTrend_({}, null),
     totalPick: 0,
     totalPickRange: { startDate: "", endDate: "", sourceColumn: "C" },
     totalRows: 0,

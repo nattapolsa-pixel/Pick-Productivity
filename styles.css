@@ -966,6 +966,207 @@ body.target-modal-open { overflow: hidden; }
   flex-shrink: 0;
 }
 
+/* ─── MONTHLY PRODUCTIVITY TREND ─────────────────────── */
+.monthly-productivity-panel {
+  margin-top: 1rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.018)),
+    var(--bg-surface);
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 18px 44px rgba(0,0,0,.16);
+}
+
+.monthly-productivity-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.monthly-productivity-desc {
+  margin: .35rem 0 0;
+  color: var(--text-muted);
+  font-size: .78rem;
+  line-height: 1.45;
+}
+
+.monthly-productivity-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(110px, 1fr));
+  gap: .55rem;
+  width: min(680px, 100%);
+}
+
+.monthly-summary-chip {
+  min-width: 0;
+  padding: .72rem .8rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,.035);
+}
+
+.monthly-summary-chip span {
+  display: block;
+  color: var(--text-muted);
+  font-size: .66rem;
+  font-weight: 700;
+  margin-bottom: .28rem;
+}
+
+.monthly-summary-chip strong {
+  display: block;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: .9rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.monthly-productivity-chart {
+  margin-top: .8rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: rgba(0,0,0,.14);
+  overflow-x: auto;
+}
+
+.monthly-productivity-chart svg {
+  display: block;
+  width: 100%;
+  min-width: 920px;
+  height: auto;
+}
+
+.monthly-chart-grid {
+  stroke: rgba(148,163,184,.18);
+  stroke-width: 1;
+}
+
+.monthly-chart-axis,
+.monthly-chart-date,
+.monthly-chart-title,
+.monthly-chart-target-label {
+  fill: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.monthly-chart-title,
+.monthly-chart-target-label {
+  font-size: 13px;
+}
+
+.monthly-chart-target {
+  stroke: rgba(245,158,11,.74);
+  stroke-width: 2;
+  stroke-dasharray: 7 7;
+}
+
+.monthly-chart-bar {
+  fill: var(--blue);
+  opacity: .72;
+}
+
+.monthly-chart-bar.up,
+.monthly-chart-dot.up { fill: var(--good); }
+
+.monthly-chart-bar.down,
+.monthly-chart-dot.down { fill: var(--warn); }
+
+.monthly-chart-bar.flat,
+.monthly-chart-dot.flat { fill: #38bdf8; }
+
+.monthly-chart-bar.no-data {
+  fill: rgba(148,163,184,.45);
+}
+
+.monthly-chart-line {
+  fill: none;
+  stroke: var(--text-primary);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.monthly-chart-dot {
+  stroke: var(--bg-base);
+  stroke-width: 2;
+}
+
+.monthly-productivity-empty {
+  padding: 2rem;
+  color: var(--text-muted);
+  text-align: center;
+  font-weight: 700;
+}
+
+.monthly-productivity-days {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: .55rem;
+  margin-top: .8rem;
+}
+
+.monthly-day-card {
+  min-width: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,.035);
+  padding: .68rem .72rem;
+}
+
+.monthly-day-card span,
+.monthly-day-card small,
+.monthly-day-card em {
+  display: block;
+  line-height: 1.35;
+}
+
+.monthly-day-card span {
+  color: var(--text-muted);
+  font-size: .66rem;
+  font-weight: 700;
+}
+
+.monthly-day-card strong {
+  display: block;
+  margin: .18rem 0 .1rem;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 1.12rem;
+}
+
+.monthly-day-card small {
+  color: var(--text-muted);
+  font-size: .68rem;
+  font-weight: 800;
+}
+
+.monthly-day-card.up small { color: var(--good); }
+.monthly-day-card.down small { color: var(--warn); }
+.monthly-day-card.flat small { color: #38bdf8; }
+
+.monthly-day-card.no-data {
+  background: rgba(148,163,184,.055);
+  color: var(--text-muted);
+}
+
+.monthly-day-card.no-data strong,
+.monthly-day-card.no-data small {
+  color: var(--text-muted);
+}
+
+.monthly-day-card em {
+  margin-top: .14rem;
+  color: var(--text-muted);
+  font-size: .64rem;
+  font-style: normal;
+  overflow-wrap: anywhere;
+}
+
 
 /* ─── PRESENT / EXECUTIVE SUMMARY ───────────────────── */
 .present-header {
@@ -1867,6 +2068,8 @@ body.target-modal-open { overflow: hidden; }
   .kpi-trio { grid-template-columns: 1fr 1fr; }
   .visual-trio { grid-template-columns: 1fr 1fr; }
   .kpi-trio .kpi-main { grid-column: 1 / -1; }
+  .monthly-productivity-head { flex-direction: column; }
+  .monthly-productivity-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 860px) {
@@ -1879,12 +2082,16 @@ body.target-modal-open { overflow: hidden; }
   .topbar-center { display: none; }
   .kpi-trio,
   .visual-trio { grid-template-columns: 1fr; }
+  .monthly-productivity-chart svg { min-width: 820px; }
 }
 
 @media (max-width: 600px) {
   .content-area { padding: 1rem 1rem 2rem; }
   .topbar-right { gap: .4rem; }
   .date-filter-row { display: none; }
+  .monthly-productivity-panel { padding: 1rem; }
+  .monthly-productivity-summary,
+  .monthly-productivity-days { grid-template-columns: 1fr; }
 }
 
 /* ─── SYNC STATUS STATES ─────────────────────────────── */
@@ -3490,3 +3697,143 @@ body.loading-open { overflow: hidden; }
 :root.light .compare-note.is-empty {
   color: #475569 !important;
 }
+
+/* ─── PREMIUM CUSTOM CHART TOOLTIP ────────────────────── */
+.chart-tooltip {
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
+  border-radius: 8px;
+  padding: 0.65rem 0.85rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(26, 108, 246, 0.15) inset;
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  min-width: 180px;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+}
+
+.tooltip-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}
+
+.tooltip-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tooltip-trend {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.tooltip-detail {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 0.35rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 0.25rem;
+}
+
+/* ─── STAGGERED TAB ENTRY ANIMATIONS ─────────────────── */
+@keyframes slideUpFade {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tab-panel.active > div,
+.tab-panel.active > section,
+.tab-panel.active > article,
+.tab-panel.active .kpi-main,
+.tab-panel.active .kpi-stat,
+.tab-panel.active .category-card,
+.tab-panel.active .shift-card,
+.tab-panel.active .bu-card,
+.tab-panel.active .zone-card,
+.tab-panel.active .picker-row {
+  opacity: 0;
+  animation: slideUpFade 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Stagger delay offsets */
+.tab-panel.active > *:nth-child(1) { animation-delay: 0.04s; }
+.tab-panel.active > *:nth-child(2) { animation-delay: 0.08s; }
+.tab-panel.active > *:nth-child(3) { animation-delay: 0.12s; }
+.tab-panel.active > *:nth-child(4) { animation-delay: 0.16s; }
+.tab-panel.active > *:nth-child(5) { animation-delay: 0.20s; }
+
+/* ─── GLOW & FLOATING CARD HOVER STATES ──────────────── */
+.kpi-main,
+.kpi-stat,
+.category-card,
+.shift-card,
+.bu-card {
+  position: relative;
+  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), 
+              border-color 0.22s, 
+              box-shadow 0.22s;
+  overflow: hidden;
+}
+
+.kpi-main:hover,
+.kpi-stat:hover,
+.category-card:hover,
+.shift-card:hover,
+.bu-card:hover {
+  transform: translateY(-4px) scale(1.01);
+  border-color: rgba(26, 108, 246, 0.45);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3), 
+              0 0 15px rgba(26, 108, 246, 0.15);
+}
+
+/* Status specific glow adjustments */
+.kpi-main.is-good:hover,
+.category-card.is-good:hover,
+.shift-card.is-good:hover,
+.bu-card.is-good:hover {
+  border-color: rgba(34, 197, 94, 0.5);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3), 
+              0 0 15px rgba(34, 197, 94, 0.18);
+}
+
+.kpi-main.is-warning:hover,
+.category-card.is-warning:hover,
+.shift-card.is-warning:hover,
+.bu-card.is-warning:hover {
+  border-color: rgba(239, 68, 68, 0.5);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3), 
+              0 0 15px rgba(239, 68, 68, 0.18);
+}
+
+/* SVG Chart styles for new data attributes */
+.monthly-chart-bar,
+.monthly-chart-dot {
+  cursor: pointer;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.monthly-chart-bar:hover {
+  filter: brightness(1.2) drop-shadow(0 2px 6px rgba(26, 108, 246, 0.4));
+  transform-origin: bottom;
+}
+
+.monthly-chart-dot:hover {
+  transform: scale(1.4);
+  filter: brightness(1.2);
+}
+

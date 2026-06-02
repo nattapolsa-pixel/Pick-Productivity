@@ -1,7 +1,7 @@
 const RESULTS_API_URL = "https://script.google.com/macros/s/AKfycbyby7nOGMZe-w8pph0IZ7jz9WqQ17pwFhfW4TdWgoi1PJlkvXhYuNzHav48WBNsOkcGjg/exec";
 const REFRESH_INTERVAL_MS = 60 * 1000;
 const REQUEST_TIMEOUT_MS = 45000;
-const DAILY_INDEX_TIMEOUT_MS = 45000;
+const DAILY_INDEX_TIMEOUT_MS = 90000;
 const DASHBOARD_CACHE_PREFIX = "pickProductivityDashboardCache:v51-picker-zone-column-ah";
 const TARGET_STORAGE_KEY = "pickProductivityTargets:v1";
 
@@ -173,6 +173,10 @@ const gaugeTargetText = document.querySelector("#gaugeTargetText");
 const gaugeInsight = document.querySelector("#gaugeInsight");
 const categoryMiniChart = document.querySelector("#categoryMiniChart");
 const shiftMiniChart = document.querySelector("#shiftMiniChart");
+const monthlyProductivityRange = document.querySelector("#monthlyProductivityRange");
+const monthlyProductivitySummary = document.querySelector("#monthlyProductivitySummary");
+const monthlyProductivityChart = document.querySelector("#monthlyProductivityChart");
+const monthlyProductivityDays = document.querySelector("#monthlyProductivityDays");
 const presentRangeButtons = document.querySelectorAll("[data-present-range]");
 const presentPeriodLabel = document.querySelector("#presentPeriodLabel");
 const presentHeadline = document.querySelector("#presentHeadline");
@@ -185,10 +189,11 @@ const presentHighlights = document.querySelector("#presentHighlights");
 const presentRisks = document.querySelector("#presentRisks");
 const presentActions = document.querySelector("#presentActions");
 
-let selectedRange = "today";
+let selectedRange = "latest";
 let isLoading = false;
 let dailyIndexPayload = null;
 let isDailyIndexLoading = false;
+let isMonthlyTrendFallbackLoading = false;
 
 // ---- Loading modal / progress helpers ----
 const loadingModal = document.querySelector("#loadingModal");
@@ -362,6 +367,35 @@ function toDdMmYyyyFromInput(value) {
   return `${match[3]}/${match[2]}/${match[1]}`;
 }
 
+function getLatestDateInputFromPayload(payload = {}) {
+  const rangeInfo = payload.totalPickRange || {};
+  const diagnostics = payload.filterDiagnostics || {};
+  const candidates = [
+    rangeInfo.endDate,
+    diagnostics.lastMatchedDate,
+    payload.latestDate,
+    payload.lastDate,
+  ];
+
+  for (const candidate of candidates) {
+    const dateKey = toIsoDateKey(candidate);
+
+    if (dateKey) {
+      return dateKey;
+    }
+  }
+
+  return "";
+}
+
+function getDashboardCacheKeyForDates(startDate = "", endDate = "") {
+  return [
+    DASHBOARD_CACHE_PREFIX,
+    startDate || "all",
+    endDate || "all",
+  ].join(":");
+}
+
 function getDashboardUrl(options = {}) {
   const { force = false, callback = "", mode = "" } = options;
   const url = new URL(RESULTS_API_URL);
@@ -399,11 +433,7 @@ function getDashboardUrl(options = {}) {
 }
 
 function getDashboardCacheKey() {
-  return [
-    DASHBOARD_CACHE_PREFIX,
-    startDateInput.value || "all",
-    endDateInput.value || "all",
-  ].join(":");
+  return getDashboardCacheKeyForDates(startDateInput.value, endDateInput.value);
 }
 
 function setSyncStatus(message) {
@@ -432,8 +462,51 @@ function formatNumber(value) {
   }).format(Math.round(number));
 }
 
+function formatProductivityValue(value) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return "-";
+  }
+
+  return new Intl.NumberFormat("th-TH", {
+    maximumFractionDigits: 1,
+  }).format(number);
+}
+
 function formatInteger(value) {
   return new Intl.NumberFormat("th-TH").format(Number(value) || 0);
+}
+
+function animateValue(element, targetValue, formatter = null, duration = 800) {
+  if (!element) return;
+  const target = Number(targetValue);
+  if (isNaN(target) || !isFinite(target) || target <= 0) {
+    element.textContent = formatter ? formatter(targetValue) : String(targetValue);
+    return;
+  }
+
+  const startTime = performance.now();
+  const startValue = 0;
+
+  function update(currentTime) {
+    const elapsed = currentTime - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    
+    // Ease out cubic
+    const easeProgress = 1 - Math.pow(1 - progress, 3);
+    const currentValue = startValue + (target - startValue) * easeProgress;
+    
+    element.textContent = formatter ? formatter(currentValue) : String(Math.round(currentValue));
+
+    if (progress < 1) {
+      requestAnimationFrame(update);
+    } else {
+      element.textContent = formatter ? formatter(target) : String(target);
+    }
+  }
+
+  requestAnimationFrame(update);
 }
 
 
@@ -554,6 +627,49 @@ function normalizePickerSummary(pickers) {
     bottom,
   };
 }
+
+function createEmptyMonthlyProductivityTrend() {
+  return {
+    month: "",
+    monthLabel: "",
+    startDate: "",
+    endDate: "",
+    metricLabel: "Avg Pick/Hr",
+    sourceColumn: "Results Master!C / AF",
+    average: null,
+    activeDays: 0,
+    totalPick: 0,
+    peakDay: null,
+    lowDay: null,
+    days: [],
+  };
+}
+
+function normalizeMonthlyProductivityTrend(trend) {
+  if (!trend || typeof trend !== "object") {
+    return createEmptyMonthlyProductivityTrend();
+  }
+
+  return {
+    ...createEmptyMonthlyProductivityTrend(),
+    ...trend,
+    average: trend.average === null || trend.average === undefined ? null : Number(trend.average || 0),
+    activeDays: Number(trend.activeDays || 0),
+    totalPick: Number(trend.totalPick || 0),
+    days: Array.isArray(trend.days) ? trend.days.map((day, index) => ({
+      date: day.date || "",
+      dateLabel: day.dateLabel || day.date || "",
+      day: Number(day.day || index + 1),
+      productivity: day.productivity === null || day.productivity === undefined ? null : Number(day.productivity || 0),
+      count: Number(day.count || 0),
+      totalPick: Number(day.totalPick || 0),
+      hasData: Boolean(day.hasData),
+      change: day.change === null || day.change === undefined ? null : Number(day.change || 0),
+      trend: day.trend || "none",
+    })) : [],
+  };
+}
+
 function normalizeDashboardPayload(payload) {
   if (!payload || payload.ok === false) {
     return payload;
@@ -566,6 +682,7 @@ function normalizeDashboardPayload(payload) {
       bu: Array.isArray(payload.bu) ? payload.bu : [],
       shifts: Array.isArray(payload.shifts) ? payload.shifts : [],
       training: Array.isArray(payload.training) ? payload.training : [],
+      monthlyTrend: normalizeMonthlyProductivityTrend(payload.monthlyTrend),
       totalPick: Number(payload.totalPick || 0),
       pickers: normalizePickerSummary(payload.pickers),
       needsZoneApiUpdate: !Array.isArray(payload.zones),
@@ -600,6 +717,7 @@ function normalizeDashboardPayload(payload) {
     bu: [],
     shifts: [],
     training: [],
+    monthlyTrend: createEmptyMonthlyProductivityTrend(),
     pickers: createEmptyPickerSummary(),
     totalPick: Number(payload.totalPick || 0),
     totalRows: validRows,
@@ -859,6 +977,281 @@ function renderMiniChart(container, items, emptyText) {
   });
 }
 
+function getMonthlyTrendText(day) {
+  if (!day || !day.hasData) {
+    return "ไม่มีข้อมูล";
+  }
+
+  if (day.change === null || day.change === undefined) {
+    return "วันแรก";
+  }
+
+  const change = Number(day.change || 0);
+
+  if (change > 0) {
+    return `ขึ้น ${formatProductivityValue(change)}`;
+  }
+
+  if (change < 0) {
+    return `ลง ${formatProductivityValue(Math.abs(change))}`;
+  }
+
+  return "เท่าเดิม";
+}
+
+function buildMonthlyProductivitySvg(days, metricLabel) {
+  const safeDays = Array.isArray(days) ? days : [];
+  const values = safeDays
+    .filter((day) => day?.hasData && Number.isFinite(Number(day.productivity)))
+    .map((day) => Number(day.productivity));
+
+  if (values.length === 0) {
+    return `<div class="monthly-productivity-empty">ยังไม่มีข้อมูล Productivity ในเดือนนี้</div>`;
+  }
+
+  const width = 1040;
+  const height = 330;
+  const pad = { top: 24, right: 24, bottom: 58, left: 62 };
+  const plotWidth = width - pad.left - pad.right;
+  const plotHeight = height - pad.top - pad.bottom;
+  const maxValue = Math.max(...values, TARGETS.overall, 1);
+  const scaleMax = Math.ceil((maxValue * 1.12) / 10) * 10;
+  const step = safeDays.length > 1 ? plotWidth / (safeDays.length - 1) : plotWidth;
+  const barWidth = Math.max(7, Math.min(16, (plotWidth / Math.max(safeDays.length, 1)) * 0.48));
+  const yOf = (value) => pad.top + plotHeight - ((Number(value || 0) / scaleMax) * plotHeight);
+  const points = safeDays
+    .map((day, index) => ({
+      day,
+      x: pad.left + (index * step),
+      y: yOf(day.productivity),
+    }))
+    .filter((point) => point.day.hasData);
+  const path = points.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
+  const targetY = yOf(TARGETS.overall);
+
+  const grid = [0, 0.5, 1].map((ratio) => {
+    const value = scaleMax * ratio;
+    const y = yOf(value);
+    return `
+      <line class="monthly-chart-grid" x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}"></line>
+      <text class="monthly-chart-axis" x="${pad.left - 10}" y="${y + 4}" text-anchor="end">${escapeHtml(formatProductivityValue(value))}</text>
+    `;
+  }).join("");
+
+  const bars = safeDays.map((day, index) => {
+    const x = pad.left + (index * step);
+    const barHeight = day.hasData ? Math.max(2, pad.top + plotHeight - yOf(day.productivity)) : 2;
+    const y = pad.top + plotHeight - barHeight;
+    const detailText = day.hasData
+      ? `${formatInteger(day.count)} รายการ · Total pick ${formatInteger(day.totalPick)}`
+      : "";
+
+    return `
+      <rect class="monthly-chart-bar ${day.hasData ? day.trend || "flat" : "no-data"}" 
+            x="${x - (barWidth / 2)}" y="${y}" width="${barWidth}" height="${barHeight}" rx="4"
+            data-tooltip-title="${escapeHtml(day.dateLabel)}"
+            data-tooltip-value="${escapeHtml(day.hasData ? formatProductivityValue(day.productivity) + ' ' + metricLabel : 'ไม่มีข้อมูล')}"
+            data-tooltip-detail="${escapeHtml(detailText)}"
+            data-tooltip-trend="${day.trend || 'none'}">
+      </rect>
+    `;
+  }).join("");
+
+  const dots = points.map((point) => {
+    const day = point.day;
+    const detailText = day.hasData
+      ? `${formatInteger(day.count)} รายการ · Total pick ${formatInteger(day.totalPick)}`
+      : "";
+    return `
+      <circle class="monthly-chart-dot ${day.trend || "flat"}" cx="${point.x}" cy="${point.y}" r="4"
+              data-tooltip-title="${escapeHtml(day.dateLabel)}"
+              data-tooltip-value="${escapeHtml(formatProductivityValue(day.productivity) + ' ' + metricLabel)}"
+              data-tooltip-detail="${escapeHtml(detailText)}"
+              data-tooltip-trend="${day.trend || 'none'}">
+      </circle>
+    `;
+  }).join("");
+
+  const labels = safeDays.map((day, index) => {
+    const x = pad.left + (index * step);
+    return `<text class="monthly-chart-date" x="${x}" y="${height - 24}" text-anchor="middle">${escapeHtml(String(day.day || index + 1))}</text>`;
+  }).join("");
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="กราฟ Productivity รายวันตั้งแต่วันที่ 1 ถึงวันสิ้นเดือน">
+      ${grid}
+      <line class="monthly-chart-target" x1="${pad.left}" y1="${targetY}" x2="${width - pad.right}" y2="${targetY}"></line>
+      <text class="monthly-chart-target-label" x="${width - pad.right}" y="${targetY - 8}" text-anchor="end">Target ${TARGETS.overall}</text>
+      ${bars}
+      <path class="monthly-chart-line" d="${path}"></path>
+      ${dots}
+      ${labels}
+      <text class="monthly-chart-title" x="${pad.left}" y="${height - 8}">${escapeHtml(metricLabel)} / วันที่ของเดือน</text>
+    </svg>
+  `;
+}
+
+let chartTooltipInitialized = false;
+
+function setupChartTooltips() {
+  if (chartTooltipInitialized) return;
+  const chartContainer = document.querySelector("#monthlyProductivityChart");
+  if (!chartContainer) return;
+
+  let tooltip = document.querySelector("#chartTooltip");
+  if (!tooltip) {
+    tooltip = document.createElement("div");
+    tooltip.id = "chartTooltip";
+    tooltip.className = "chart-tooltip glass";
+    tooltip.style.position = "fixed";
+    tooltip.style.display = "none";
+    tooltip.style.pointerEvents = "none";
+    tooltip.style.zIndex = "1000";
+    document.body.appendChild(tooltip);
+  }
+
+  chartContainer.addEventListener("mouseover", (e) => {
+    const target = e.target.closest("[data-tooltip-title]");
+    if (!target) return;
+
+    const title = target.getAttribute("data-tooltip-title");
+    const val = target.getAttribute("data-tooltip-value");
+    const detail = target.getAttribute("data-tooltip-detail");
+    const trend = target.getAttribute("data-tooltip-trend");
+
+    let trendIcon = "⚪";
+    if (trend === "up") trendIcon = "🟢 ▲";
+    if (trend === "down") trendIcon = "🔴 ▼";
+    if (trend === "flat") trendIcon = "🟡 ▬";
+
+    tooltip.innerHTML = `
+      <div class="tooltip-title">${title}</div>
+      <div class="tooltip-value">${val} <span class="tooltip-trend">${trendIcon}</span></div>
+      ${detail ? `<div class="tooltip-detail">${detail}</div>` : ""}
+    `;
+    tooltip.style.display = "block";
+  });
+
+  chartContainer.addEventListener("mousemove", (e) => {
+    if (tooltip.style.display === "block") {
+      tooltip.style.left = `${e.clientX + 15}px`;
+      tooltip.style.top = `${e.clientY + 15}px`;
+    }
+  });
+
+  chartContainer.addEventListener("mouseout", (e) => {
+    const target = e.target.closest("[data-tooltip-title]");
+    if (target) {
+      tooltip.style.display = "none";
+    }
+  });
+
+  chartTooltipInitialized = true;
+}
+
+function renderMonthlyProductivityTrend(rawTrend) {
+  if (!monthlyProductivityRange || !monthlyProductivitySummary || !monthlyProductivityChart || !monthlyProductivityDays) {
+    return;
+  }
+
+  const trend = normalizeMonthlyProductivityTrend(rawTrend);
+  const metricLabel = trend.metricLabel || "Avg Pick/Hr";
+  const rangeText = trend.startDate && trend.endDate
+    ? `${trend.monthLabel || trend.month || ""} · ${trend.startDate} ถึง ${trend.endDate}`
+    : "วันที่ 1 ถึงวันสิ้นเดือน";
+  monthlyProductivityRange.textContent = `${rangeText} · ${metricLabel} จาก ${trend.sourceColumn || "Results Master!AF"}`;
+
+  const summaryItems = [
+    { label: "เฉลี่ยเดือน", value: trend.average === null ? "-" : formatProductivityValue(trend.average) },
+    { label: "วันสูงสุด", value: trend.peakDay ? `${trend.peakDay.dateLabel} · ${formatProductivityValue(trend.peakDay.productivity)}` : "-" },
+    { label: "วันต่ำสุด", value: trend.lowDay ? `${trend.lowDay.dateLabel} · ${formatProductivityValue(trend.lowDay.productivity)}` : "-" },
+    { label: "วันที่มีข้อมูล", value: `${formatInteger(trend.activeDays)} วัน` },
+  ];
+
+  monthlyProductivitySummary.innerHTML = summaryItems.map((item) => `
+    <div class="monthly-summary-chip">
+      <span>${escapeHtml(item.label)}</span>
+      <strong>${escapeHtml(item.value)}</strong>
+    </div>
+  `).join("");
+
+  monthlyProductivityChart.innerHTML = buildMonthlyProductivitySvg(trend.days, metricLabel);
+  setupChartTooltips();
+  
+  monthlyProductivityDays.innerHTML = trend.days.map((day) => {
+    const valueText = day.hasData ? formatProductivityValue(day.productivity) : "-";
+    const detailText = day.hasData
+      ? `${formatInteger(day.count)} รายการ · Total pick ${formatInteger(day.totalPick)}`
+      : "ไม่มีข้อมูล";
+
+    return `
+      <article class="monthly-day-card ${day.hasData ? day.trend || "flat" : "no-data"}">
+        <span>${escapeHtml(day.dateLabel || "")}</span>
+        <strong>${escapeHtml(valueText)}</strong>
+        <small>${escapeHtml(getMonthlyTrendText(day))}</small>
+        <em>${escapeHtml(detailText)}</em>
+      </article>
+    `;
+  }).join("");
+}
+
+function hasMonthlyProductivityTrendData(rawTrend) {
+  const trend = normalizeMonthlyProductivityTrend(rawTrend);
+  return trend.days.some((day) => day.hasData && Number.isFinite(Number(day.productivity)));
+}
+
+function renderMonthlyProductivityTrendFromDailyIndex(sourceLabel = "กราฟรายเดือนจาก Daily Index") {
+  if (!dailyIndexPayload || dailyIndexPayload.ok === false || dailyIndexPayload.mode !== "dailyIndex") {
+    return false;
+  }
+
+  const trend = buildMonthlyProductivityTrendFromDailyIndex(dailyIndexPayload, []);
+  renderMonthlyProductivityTrend(trend);
+
+  if (lastRenderedPayload) {
+    lastRenderedPayload.monthlyTrend = trend;
+    saveDashboardToLocalCache(lastRenderedPayload);
+  }
+
+  if (syncStatus) {
+    const currentText = syncStatus.textContent || sourceLabel;
+    setSyncStatus(currentText.includes(sourceLabel) ? currentText : `${currentText} | ${sourceLabel}`);
+  }
+
+  return hasMonthlyProductivityTrendData(trend);
+}
+
+function ensureMonthlyProductivityTrend(rawPayload) {
+  if (hasMonthlyProductivityTrendData(rawPayload?.monthlyTrend)) {
+    return;
+  }
+
+  if (loadDailyIndexFromLocalCache() && renderMonthlyProductivityTrendFromDailyIndex()) {
+    return;
+  }
+
+  if (isMonthlyTrendFallbackLoading) {
+    return;
+  }
+
+  isMonthlyTrendFallbackLoading = true;
+  const currentText = syncStatus?.textContent || "";
+
+  if (currentText && !currentText.includes("กำลังเติมกราฟรายเดือน")) {
+    setSyncStatus(`${currentText} | กำลังเติมกราฟรายเดือน...`);
+  }
+
+  loadDailyIndex({ force: false })
+    .then((payload) => {
+      if (payload?.ok && payload.mode === "dailyIndex") {
+        renderMonthlyProductivityTrendFromDailyIndex();
+      }
+    })
+    .finally(() => {
+      isMonthlyTrendFallbackLoading = false;
+    });
+}
+
 function renderCategoryVisual(categories) {
   const items = CATEGORY_CONFIG.map((config) => {
     const data = categories[config.key] || {};
@@ -1089,6 +1482,7 @@ function getPresentRangeLabel() {
   if (selectedRange === "week") return "Weekly Summary";
   if (selectedRange === "month") return "Monthly Summary";
   if (selectedRange === "today") return "Today Summary";
+  if (selectedRange === "latest" || selectedRange === "autoLatest") return "Latest Day Summary";
   if (selectedRange === "custom" && (start || end)) return `${start || "เริ่มต้น"} ถึง ${end || "ล่าสุด"}`;
   return "All Data Summary";
 }
@@ -1369,12 +1763,14 @@ function renderOverall(summary, payload = {}) {
 
   overallCard.classList.remove("is-good", "is-warning", "is-empty");
   overallCard.classList.add(info.className);
-  overallAverage.textContent = formatNumber(summary.average);
+  // Animate Overall Average count
+  animateValue(overallAverage, summary.average, formatNumber);
   overallStatus.textContent = info.label;
   overallGap.textContent = getSimpleTargetDirection(summary.average, TARGETS.overall);
   overallProgress.style.width = `${Math.min(info.progress, 100)}%`;
   const totalPickValue = Number(payload.totalPick || 0);
-  if (overviewTotalPick) overviewTotalPick.textContent = totalPickValue > 0 ? formatInteger(totalPickValue) : "-";
+  // Animate Total Pick count
+  if (overviewTotalPick) animateValue(overviewTotalPick, totalPickValue, formatInteger);
   if (overviewTotalPickNote) {
     overviewTotalPickNote.innerHTML = `${escapeHtml(getOverviewTotalPickRangeText(payload))}${getCompareNoteHtml(totalPickValue, payload.previousPayload?.totalPick, payload, "รายการ")}`;
   }
@@ -1387,7 +1783,8 @@ function renderOverall(summary, payload = {}) {
   const sidebarOverall = document.querySelector("#sidebarOverall");
   const sidebarProgress = document.querySelector("#sidebarProgress");
   const sidebarStatus = document.querySelector("#sidebarStatus");
-  if (sidebarOverall) sidebarOverall.textContent = formatNumber(summary.average);
+  // Animate Sidebar count
+  if (sidebarOverall) animateValue(sidebarOverall, summary.average, formatNumber);
   if (sidebarProgress) sidebarProgress.style.width = `${Math.min(info.progress, 100)}%`;
   if (sidebarStatus) {
     sidebarStatus.textContent = info.label;
@@ -1408,7 +1805,7 @@ function renderCategoryCards(categories, payload = {}) {
         <h3>${config.title}</h3>
         <span>${info.label}</span>
       </div>
-      <div class="category-value">${formatNumber(data.average)}</div>
+      <div class="category-value">-</div>
       <div class="category-meta">
         <span>Main KPI ${config.mainKpi}</span>
         <span>Target ≥ ${config.target}</span>
@@ -1421,6 +1818,10 @@ function renderCategoryCards(categories, payload = {}) {
       ${getCompareNoteHtml(data.average, payload.previousPayload?.categories?.[config.key]?.average, payload, "Pick/Hr", config.target)}
     `;
     categoryGrid.appendChild(card);
+
+    // Animate category value after card is appended
+    const valueEl = card.querySelector(".category-value");
+    animateValue(valueEl, data.average, formatNumber);
   });
 }
 
@@ -1481,7 +1882,7 @@ function renderShiftBreakdown(shifts, payload = {}) {
         </div>
         <strong>${info.label}</strong>
       </div>
-      <div class="shift-value">${formatNumber(item.average)}</div>
+      <div class="shift-value">-</div>
       <div class="shift-meta">
         <span>Target ≥ ${target}</span>
         <span>Share ${formatNumber(item.share || 0)}%</span>
@@ -1495,6 +1896,10 @@ function renderShiftBreakdown(shifts, payload = {}) {
       ${affiliationRows}
     `;
     shiftGrid.appendChild(card);
+
+    // Animate shift value count
+    const valueEl = card.querySelector(".shift-value");
+    animateValue(valueEl, item.average, formatNumber);
   });
 }
 
@@ -1556,7 +1961,7 @@ function renderBuBreakdown(buItems, payload = {}) {
         </div>
         <strong>${info.label}</strong>
       </div>
-      <div class="bu-value">${formatNumber(item.average)}</div>
+      <div class="bu-value">-</div>
       <div class="bu-meta">
         <span>Target ≥ ${target}</span>
         <span>Share ${formatNumber(item.share || 0)}%</span>
@@ -1570,6 +1975,10 @@ function renderBuBreakdown(buItems, payload = {}) {
       ${detailRows}
     `;
     buGrid.appendChild(card);
+
+    // Animate BU value count
+    const valueEl = card.querySelector(".bu-value");
+    animateValue(valueEl, item.average, formatNumber);
   });
 }
 
@@ -2366,6 +2775,122 @@ function finalizeTrainingFromRaw(rawTraining) {
     .slice(0, 100);
 }
 
+function getIsoMonthKey(dateKey) {
+  const match = String(dateKey || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
+  return match ? `${match[1]}-${match[2]}` : "";
+}
+
+function hasDailyIndexDataInMonth(indexPayload, monthKey) {
+  if (!monthKey) {
+    return false;
+  }
+
+  return (Array.isArray(indexPayload?.dateKeys) ? indexPayload.dateKeys : []).some((dateKey) => {
+    const day = indexPayload.dates?.[dateKey] || {};
+    return dateKey.indexOf(`${monthKey}-`) === 0 && Number(day.overall?.count || 0) > 0;
+  });
+}
+
+function getLatestDailyIndexDateKey(indexPayload) {
+  return (Array.isArray(indexPayload?.dateKeys) ? indexPayload.dateKeys : [])
+    .filter((dateKey) => Number(indexPayload.dates?.[dateKey]?.overall?.count || 0) > 0)
+    .sort()
+    .pop() || "";
+}
+
+function buildMonthlyProductivityTrendFromDailyIndex(indexPayload, selectedKeys) {
+  const requestedKey = (Array.isArray(selectedKeys) && selectedKeys.length > 0 ? selectedKeys[selectedKeys.length - 1] : "")
+    || startDateInput.value
+    || endDateInput.value
+    || "";
+  let anchorKey = requestedKey;
+  const requestedMonthKey = getIsoMonthKey(requestedKey);
+
+  if (!hasDailyIndexDataInMonth(indexPayload, requestedMonthKey)) {
+    anchorKey = getLatestDailyIndexDateKey(indexPayload) || requestedKey || toIsoDateKey(new Date());
+  }
+
+  const anchorMatch = String(anchorKey || toIsoDateKey(new Date())).match(/^(\d{4})-(\d{2})-\d{2}$/);
+  const year = anchorMatch ? Number(anchorMatch[1]) : new Date().getFullYear();
+  const monthIndex = anchorMatch ? Number(anchorMatch[2]) - 1 : new Date().getMonth();
+  const startDate = new Date(year, monthIndex, 1);
+  const endDate = new Date(year, monthIndex + 1, 0);
+  const daysInMonth = endDate.getDate();
+  const days = [];
+  let previousAverage = null;
+  let totalSum = 0;
+  let totalCount = 0;
+  let totalPick = 0;
+  let activeDays = 0;
+  let peakDay = null;
+  let lowDay = null;
+
+  for (let dayNumber = 1; dayNumber <= daysInMonth; dayNumber += 1) {
+    const date = new Date(year, monthIndex, dayNumber);
+    const dateKey = toIsoDateKey(date);
+    const dayPayload = indexPayload.dates?.[dateKey] || {};
+    const bucket = dayPayload.overall || {};
+    const count = Number(bucket.count || 0);
+    const hasData = count > 0;
+    const rawAverage = hasData ? Number(bucket.sum || 0) / count : 0;
+    const average = hasData ? round1(rawAverage) : null;
+    let change = null;
+    let trend = "none";
+
+    if (hasData) {
+      activeDays += 1;
+      totalSum += Number(bucket.sum || 0);
+      totalCount += count;
+      totalPick += Number(dayPayload.totalPick || 0);
+
+      if (previousAverage !== null) {
+        change = round1(rawAverage - previousAverage);
+        trend = change > 0 ? "up" : change < 0 ? "down" : "flat";
+      }
+
+      previousAverage = rawAverage;
+
+      if (!peakDay || rawAverage > peakDay.rawAverage) {
+        peakDay = { date: dateKey, dateLabel: isoToDmy(dateKey), productivity: average, rawAverage };
+      }
+
+      if (!lowDay || rawAverage < lowDay.rawAverage) {
+        lowDay = { date: dateKey, dateLabel: isoToDmy(dateKey), productivity: average, rawAverage };
+      }
+    }
+
+    days.push({
+      date: dateKey,
+      dateLabel: isoToDmy(dateKey),
+      day: dayNumber,
+      productivity: average,
+      count,
+      totalPick: Math.round(Number(dayPayload.totalPick || 0)),
+      hasData,
+      change,
+      trend,
+    });
+  }
+
+  if (peakDay) delete peakDay.rawAverage;
+  if (lowDay) delete lowDay.rawAverage;
+
+  return {
+    month: getIsoMonthKey(toIsoDateKey(startDate)),
+    monthLabel: new Intl.DateTimeFormat("th-TH", { month: "short", year: "numeric" }).format(startDate),
+    startDate: isoToDmy(toIsoDateKey(startDate)),
+    endDate: isoToDmy(toIsoDateKey(endDate)),
+    metricLabel: "Avg Pick/Hr",
+    sourceColumn: "Results Master!C / AF",
+    average: totalCount > 0 ? round1(totalSum / totalCount) : null,
+    activeDays,
+    totalPick: Math.round(totalPick),
+    peakDay,
+    lowDay,
+    days,
+  };
+}
+
 function buildDashboardFromDailyIndex(indexPayload) {
   const dateKeys = Array.isArray(indexPayload?.dateKeys) ? indexPayload.dateKeys : [];
   const startDate = startDateInput.value || "";
@@ -2413,6 +2938,7 @@ function buildDashboardFromDailyIndex(indexPayload) {
     bu: finalizeDailyBu(combined.bu),
     shifts: finalizeDailyShifts(combined.shifts),
     training: finalizeTrainingFromRaw(trainingCombined),
+    monthlyTrend: buildMonthlyProductivityTrendFromDailyIndex(indexPayload, selectedKeys),
     pickers: finalizeRawPickers(combined.pickers),
     totalPick: combined.totalPick,
     totalPickRange: {
@@ -2565,6 +3091,8 @@ function renderDashboard(rawPayload, options = {}) {
   // Fast path: render critical UI immediately for perceived speed
   updateStaticTargetLabels();
   renderOverall(payload.overall || {}, payload);
+  renderMonthlyProductivityTrend(payload.monthlyTrend);
+  ensureMonthlyProductivityTrend(payload);
   updateActiveDateBanner(payload, options);
   renderSnapshotOverview(payload);
   renderPresentSummary(payload);
@@ -2666,6 +3194,21 @@ function renderDashboardFromLocalCache() {
     console.warn(error);
     localStorage.removeItem(getDashboardCacheKey());
     return false;
+  }
+}
+
+function getCachedLatestDateInput() {
+  try {
+    const cachedText = localStorage.getItem(getDashboardCacheKeyForDates("", ""));
+
+    if (!cachedText) {
+      return "";
+    }
+
+    return getLatestDateInputFromPayload(JSON.parse(cachedText));
+  } catch (error) {
+    console.warn(error);
+    return "";
   }
 }
 
@@ -2811,6 +3354,64 @@ async function fetchDashboardPayload(options = {}) {
   }
 }
 
+function setDateFilterToFullMonth(dateKey) {
+  const match = String(dateKey || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    setDateFilterToSingleDay(dateKey);
+    return;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const startOfMonth = `${year}-${String(month).padStart(2, "0")}-01`;
+  const lastDay = String(new Date(year, month, 0).getDate()).padStart(2, "0");
+  const endOfMonth = `${year}-${String(month).padStart(2, "0")}-${lastDay}`;
+  
+  if (startDateInput) startDateInput.value = startOfMonth;
+  if (endDateInput) endDateInput.value = endOfMonth;
+}
+
+async function fetchLatestDashboardPayload(options = {}, discoveryPayload = null) {
+  const discovery = discoveryPayload || await fetchDashboardPayload({
+    force: Boolean(options.force),
+    filterStartDate: "",
+    filterEndDate: "",
+  });
+  const latestDateInput = getLatestDateInputFromPayload(normalizeDashboardPayload(discovery));
+
+  if (!latestDateInput) {
+    return {
+      payload: discovery,
+      latestDateInput: "",
+      usedDiscoveryPayload: true,
+    };
+  }
+
+  setDateFilterToSingleDay(latestDateInput);
+  selectedRange = "latest";
+  syncQuickFilterActiveState();
+  setSyncStatus(`พบข้อมูลล่าสุดวันที่ ${toDdMmYyyyFromInput(latestDateInput)} กำลังโหลดข้อมูล...`);
+
+  const latestPayload = await fetchDashboardPayload({
+    force: Boolean(options.force),
+    filterStartDate: latestDateInput,
+    filterEndDate: latestDateInput,
+  });
+
+  if (!hasDashboardData(normalizeDashboardPayload(latestPayload))) {
+    return {
+      payload: discovery,
+      latestDateInput,
+      usedDiscoveryPayload: true,
+    };
+  }
+
+  return {
+    payload: latestPayload,
+    latestDateInput,
+    usedDiscoveryPayload: false,
+  };
+}
+
 async function loadDashboard(options = {}) {
   const { silent = false, force = false } = options;
 
@@ -2841,6 +3442,18 @@ async function loadDashboard(options = {}) {
 
   try {
     let payload = await fetchDashboardPayload({ force });
+    const isLatestRequest = selectedRange === "latest";
+    const shouldDiscoverLatestDate = isLatestRequest
+      && (force || !startDateInput?.value || !endDateInput?.value);
+
+    if (shouldDiscoverLatestDate) {
+      clearDateFilter();
+      syncQuickFilterActiveState();
+      setSyncStatus("กำลังค้นหาวันล่าสุดที่มีข้อมูล...");
+      const latestResult = await fetchLatestDashboardPayload({ force }, payload);
+      payload = latestResult.payload;
+    }
+
     const todayKey = getRelativeDateInputValue(0);
     const isSingleTodayRequest = selectedRange === "today"
       && startDateInput?.value === todayKey
@@ -2853,9 +3466,24 @@ async function loadDashboard(options = {}) {
       syncQuickFilterActiveState();
       setSyncStatus("วันนี้ยังไม่มีข้อมูล กำลังโหลดข้อมูลของเมื่อวานแทน...");
       payload = await fetchDashboardPayload({ force });
+
+      if (!hasDashboardData(normalizeDashboardPayload(payload))) {
+        selectedRange = "autoLatest";
+        syncQuickFilterActiveState();
+        clearDateFilter();
+        setSyncStatus("วันนี้และเมื่อวานยังไม่มีข้อมูล กำลังโหลดวันล่าสุดที่มีข้อมูลแทน...");
+        const latestResult = await fetchLatestDashboardPayload({ force });
+        payload = latestResult.payload;
+      }
     }
 
-    const sourceLabel = selectedRange === "autoYesterday" ? "แสดงเมื่อวานแทน" : undefined;
+    const sourceLabel = selectedRange === "latest"
+      ? "แสดงวันล่าสุดที่มีข้อมูล"
+      : selectedRange === "autoYesterday"
+        ? "แสดงเมื่อวานแทน"
+        : selectedRange === "autoLatest"
+          ? "แสดงวันล่าสุดแทน"
+          : undefined;
     let preparedPayload = applyCurrentTargets(normalizeDashboardPayload(payload));
     preparedPayload = await attachComparisonPayload(preparedPayload, { force });
     const normalizedPayload = renderDashboard(preparedPayload, { sourceLabel });
@@ -3085,6 +3713,11 @@ function setDateFilterToSingleDay(dateKey) {
   if (endDateInput) endDateInput.value = dateKey;
 }
 
+function clearDateFilter() {
+  if (startDateInput) startDateInput.value = "";
+  if (endDateInput) endDateInput.value = "";
+}
+
 function syncQuickFilterActiveState() {
   quickFilterButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.range === selectedRange);
@@ -3105,22 +3738,34 @@ function updateActiveDateBanner(payload = {}, options = {}) {
 
   if (selectedRange === "today") {
     activeDateHint.textContent = `${"ระบบเลือกข้อมูลของวันนี้ให้อัตโนมัติ"} · ${getComparisonMeta(payload).label || "เทียบกับวันก่อนหน้า"}`;
+  } else if (selectedRange === "latest") {
+    activeDateHint.textContent = "ระบบแสดงวันที่ล่าสุดที่มีข้อมูลจริง";
   } else if (selectedRange === "autoYesterday") {
     activeDateHint.textContent = `${"วันนี้ยังไม่มีข้อมูล ระบบจึงแสดงข้อมูลของเมื่อวานแทน"} · ${getComparisonMeta(payload).label || "เทียบกับวันก่อนหน้า"}`;
+  } else if (selectedRange === "autoLatest") {
+    activeDateHint.textContent = "วันนี้และเมื่อวานยังไม่มีข้อมูล ระบบจึงแสดงวันที่ล่าสุดที่มีข้อมูลแทน";
   } else if (selectedRange === "custom") {
     activeDateHint.textContent = "ช่วงวันที่ที่เลือกเอง";
   } else {
     activeDateHint.textContent = options.sourceLabel || "ช่วงข้อมูลที่กำลังแสดงอยู่";
   }
 
-  activeDateBanner.classList.toggle("is-fallback", selectedRange === "autoYesterday");
+  activeDateBanner.classList.toggle("is-fallback", selectedRange === "autoYesterday" || selectedRange === "autoLatest");
 }
 
 function initializeDefaultDateFilter() {
-  selectedRange = "today";
-  setDateFilterToSingleDay(getRelativeDateInputValue(0));
+  selectedRange = "latest";
+  const cachedLatestDate = getCachedLatestDateInput();
+
+  if (cachedLatestDate) {
+    setDateFilterToSingleDay(cachedLatestDate);
+    selectedRange = "latest";
+  } else {
+    clearDateFilter();
+  }
+
   syncQuickFilterActiveState();
-  updateActiveDateBanner({}, { sourceLabel: "กำลังตรวจสอบข้อมูลวันนี้..." });
+  updateActiveDateBanner({}, { sourceLabel: "กำลังค้นหาวันล่าสุดที่มีข้อมูล..." });
 }
 
 function normalizeDateFilterOrder() {
@@ -3171,7 +3816,11 @@ function setQuickRange(range) {
 
 
   syncQuickFilterActiveState();
-  updateActiveDateBanner({}, { sourceLabel: "กำลังโหลดข้อมูลตามวันที่ที่เลือก..." });
+  updateActiveDateBanner({}, {
+    sourceLabel: range === "latest"
+      ? "กำลังค้นหาวันล่าสุดที่มีข้อมูล..."
+      : "กำลังโหลดข้อมูลตามวันที่ที่เลือก...",
+  });
 
   loadSelectedRange();
 }
@@ -3234,7 +3883,11 @@ function clearPickDashboardLocalCache() {
 refreshButton.addEventListener("click", async () => {
   dailyIndexPayload = null;
   clearPickDashboardLocalCache();
-  if (selectedRange === "autoYesterday") {
+  if (selectedRange === "latest") {
+    clearDateFilter();
+    syncQuickFilterActiveState();
+    updateActiveDateBanner({}, { sourceLabel: "กำลังค้นหาวันล่าสุดที่มีข้อมูล..." });
+  } else if (selectedRange === "autoYesterday" || selectedRange === "autoLatest") {
     selectedRange = "today";
     setDateFilterToSingleDay(getRelativeDateInputValue(0));
     syncQuickFilterActiveState();

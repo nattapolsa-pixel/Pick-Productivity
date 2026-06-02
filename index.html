@@ -8,7 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link rel="preconnect" href="https://script.google.com">
   <link rel="preconnect" href="https://script.googleusercontent.com">
-  <link rel="stylesheet" href="styles.css?v=theme-contrast-v55-20260521">
+  <link rel="stylesheet" href="styles.css?v=monthly-productivity-v58-20260602">
 </head>
 <body>
   <div class="dashboard-ambient" aria-hidden="true">
@@ -35,7 +35,8 @@
 
     <div class="topbar-center">
       <div class="quick-filters">
-        <button class="chip active" type="button" data-range="all">ทั้งหมด</button>
+        <button class="chip active" type="button" data-range="latest">ล่าสุด</button>
+        <button class="chip" type="button" data-range="all">ทั้งหมด</button>
         <button class="chip" type="button" data-range="today">วันนี้</button>
         <button class="chip" type="button" data-range="week">สัปดาห์นี้</button>
         <button class="chip" type="button" data-range="month">เดือนนี้</button>
@@ -231,7 +232,7 @@
             <span class="active-date-eyebrow">ข้อมูลที่กำลังแสดง</span>
             <strong id="activeDateLabel">กำลังตรวจสอบวันที่ล่าสุด...</strong>
           </div>
-          <span id="activeDateHint" class="active-date-hint">เปิดเว็บแล้วระบบจะเลือกวันนี้ให้อัตโนมัติ</span>
+          <span id="activeDateHint" class="active-date-hint">เปิดเว็บแล้วระบบจะแสดงวันที่ล่าสุดที่มีข้อมูลให้อัตโนมัติ</span>
         </div>
 
         <!-- KPI TRIO -->
@@ -305,6 +306,19 @@
             <div id="shiftMiniChart" class="mini-chart"></div>
           </article>
         </div>
+
+        <section class="monthly-productivity-panel" aria-labelledby="monthlyProductivityTitle">
+          <div class="monthly-productivity-head">
+            <div>
+              <p class="visual-card-eyebrow">MONTHLY TREND</p>
+              <h2 class="visual-card-title" id="monthlyProductivityTitle">Productivity รายวันทั้งเดือน</h2>
+              <p class="monthly-productivity-desc" id="monthlyProductivityRange">วันที่ 1 ถึงวันสิ้นเดือน</p>
+            </div>
+            <div class="monthly-productivity-summary" id="monthlyProductivitySummary"></div>
+          </div>
+          <div class="monthly-productivity-chart" id="monthlyProductivityChart"></div>
+          <div class="monthly-productivity-days" id="monthlyProductivityDays"></div>
+        </section>
       </section>
 
       <!-- TAB: PICKERS -->
@@ -537,7 +551,7 @@
     </section>
   </div>
 
-  <script src="script.js?v=picker-zone-ah-v54-20260521"></script>
+  <script src="script.js?v=monthly-productivity-v58-20260602"></script>
   <script>
     // ===== TAB SWITCHING =====
     document.querySelectorAll('.nav-item').forEach(btn => {
