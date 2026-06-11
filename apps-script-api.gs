@@ -3,7 +3,8 @@ const RESULTS_SHEET_NAME = "Results Master";
 const UPDATE_NAME_SHEET_NAME = "Update name";
 
 const CACHE_SECONDS = 300;
-const CACHE_VERSION = "v44-picker-zone-column-ah";
+const CACHE_VERSION = "v48-pick-to-sort-total-pick";
+const PICK_TO_SORT_START_DATE_KEY = "2026-06-08";
 
 const SHEET_COLUMN = {
   DATE: 3,        // C
@@ -29,6 +30,7 @@ const TARGETS = {
   fullRack: 170,
   halfRack: 200,
   ea: 170,
+  pickToSort: 170,
   training: 100,
 };
 
@@ -50,6 +52,12 @@ const PICK_TYPE_DETAILS = [
     title: "Picking Productivity - EA(หยิบ)",
     label: "EA",
     target: TARGETS.ea,
+  },
+  {
+    key: "pickToSort",
+    title: "Picking Productivity - Pick to Sort",
+    label: "Pick to Sort",
+    target: TARGETS.pickToSort,
   },
 ];
 const ZONE_GROUPS = [
@@ -579,9 +587,26 @@ function buildDailyIndexPayload_() {
     addValue_(day.overall, average);
 
     const pickType = normalizePickType_(dataValues[index][columnOffset.pickType]);
+    const shouldCountPickType = shouldCountPickTypeOnDate_(pickType, rowDate);
 
-    if (pickType && day.categories[pickType]) {
+    if (pickType && shouldCountPickType && day.categories[pickType]) {
       addValue_(day.categories[pickType], average);
+    }
+
+    if (pickType === "pickToSort" && shouldCountPickType) {
+      addPickToSortValue_(
+        day.pickToSortDetails,
+        dataDisplayValues[index][columnOffset.userId] || dataValues[index][columnOffset.userId],
+        nameDisplayValues[index][0],
+        average,
+        {
+          shift: dataDisplayValues[index][columnOffset.shift],
+          affiliation: dataDisplayValues[index][columnOffset.affiliation],
+          bu: dataDisplayValues[index][columnOffset.bu],
+          zone: dataDisplayValues[index][columnOffset.position],
+          totalPick: rowTotalPick,
+        }
+      );
     }
 
     const zoneMatch = findZoneMatch_(dataDisplayValues[index][columnOffset.position]);
@@ -595,7 +620,7 @@ function buildDailyIndexPayload_() {
     const buKey = normalizeBu_(dataDisplayValues[index][columnOffset.bu]);
     addValue_(day.bu[buKey], average);
 
-    if (pickType && day.bu[buKey].details && day.bu[buKey].details[pickType]) {
+    if (pickType && shouldCountPickType && day.bu[buKey].details && day.bu[buKey].details[pickType]) {
       addValue_(day.bu[buKey].details[pickType], average);
     }
   }
@@ -667,11 +692,13 @@ function createDailyRawSummary_() {
       fullRack: createBucket_(),
       halfRack: createBucket_(),
       ea: createBucket_(),
+      pickToSort: createBucket_(),
     },
     zones: createZoneSummary_(),
     bu: createBuSummary_(),
     shifts: createShiftSummary_(),
     pickers: createPickerSummary_(),
+    pickToSortDetails: createPickToSortSummary_(),
     training: createTrainingSummary_(),
   };
 }
@@ -684,6 +711,45 @@ function formatDateISO_(date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function shouldCountPickTypeOnDate_(pickType, rowDate) {
+  if (pickType !== "pickToSort") {
+    return true;
+  }
+
+  return Boolean(rowDate && formatDateISO_(rowDate) >= PICK_TO_SORT_START_DATE_KEY);
+}
+
+function createPickToSortSummary_() {
+  return {
+    overall: createBucket_(),
+    totalPick: 0,
+    shifts: createShiftSummary_(),
+    bu: createBuSummary_(),
+    pickers: createPickerSummary_(),
+  };
+}
+
+function addPickToSortValue_(summary, userIdValue, nameValue, average, meta) {
+  if (!summary) {
+    return;
+  }
+
+  const buKey = normalizeBu_(meta && meta.bu);
+  const totalPick = Number(meta && meta.totalPick || 0);
+  addValue_(summary.overall, average);
+  summary.totalPick += totalPick;
+  addShiftValue_(summary.shifts, meta && meta.shift, meta && meta.affiliation, average);
+  addValue_(summary.bu[buKey], average);
+  addPickerValue_(summary.pickers, userIdValue, nameValue, average, {
+    shift: meta && meta.shift,
+    affiliation: meta && meta.affiliation,
+    buKey: buKey,
+    pickType: "pickToSort",
+    zone: meta && meta.zone,
+    totalPick: meta && meta.totalPick,
+  });
 }
 
 function buildDashboardPayload_(startDateText, endDateText) {
@@ -736,11 +802,13 @@ function buildDashboardPayload_(startDateText, endDateText) {
     fullRack: createBucket_(),
     halfRack: createBucket_(),
     ea: createBucket_(),
+    pickToSort: createBucket_(),
   };
   const zoneSummary = createZoneSummary_();
   const buSummary = createBuSummary_();
   const shiftSummary = createShiftSummary_();
   const pickerSummary = createPickerSummary_();
+  const pickToSortDetails = createPickToSortSummary_();
   const trainingSummary = createTrainingSummary_();
   const monthlyTrend = {};
   seedTrainingSummary_(trainingSummary, trainingRoster);
@@ -859,6 +927,7 @@ function buildDashboardPayload_(startDateText, endDateText) {
     addValue_(summary.overall, average);
 
     const pickType = normalizePickType_(dataValues[index][columnOffset.pickType]);
+    const shouldCountPickType = shouldCountPickTypeOnDate_(pickType, rowDateForTraining);
     const buKey = normalizeBu_(dataDisplayValues[index][columnOffset.bu]);
     addPickerValue_(
       pickerSummary,
@@ -875,8 +944,24 @@ function buildDashboardPayload_(startDateText, endDateText) {
       }
     );
 
-    if (pickType && summary[pickType]) {
+    if (pickType && shouldCountPickType && summary[pickType]) {
       addValue_(summary[pickType], average);
+    }
+
+    if (pickType === "pickToSort" && shouldCountPickType) {
+      addPickToSortValue_(
+        pickToSortDetails,
+        dataDisplayValues[index][columnOffset.userId] || dataValues[index][columnOffset.userId],
+        nameDisplayValues[index][0],
+        average,
+        {
+          shift: dataDisplayValues[index][columnOffset.shift],
+          affiliation: dataDisplayValues[index][columnOffset.affiliation],
+          bu: dataDisplayValues[index][columnOffset.bu],
+          zone: dataDisplayValues[index][columnOffset.position],
+          totalPick: rowTotalPick,
+        }
+      );
     }
 
     const zoneMatch = findZoneMatch_(dataDisplayValues[index][columnOffset.position]);
@@ -889,7 +974,7 @@ function buildDashboardPayload_(startDateText, endDateText) {
 
     addValue_(buSummary[buKey], average);
 
-    if (pickType && buSummary[buKey].details && buSummary[buKey].details[pickType]) {
+    if (pickType && shouldCountPickType && buSummary[buKey].details && buSummary[buKey].details[pickType]) {
       addValue_(buSummary[buKey].details[pickType], average);
     }
   }
@@ -909,11 +994,13 @@ function buildDashboardPayload_(startDateText, endDateText) {
       fullRack: finalizeBucket_(summary.fullRack, TARGETS.fullRack),
       halfRack: finalizeBucket_(summary.halfRack, TARGETS.halfRack),
       ea: finalizeBucket_(summary.ea, TARGETS.ea),
+      pickToSort: finalizeBucket_(summary.pickToSort, TARGETS.pickToSort),
     },
     zones: finalizeZones_(zoneSummary),
     bu: finalizeBu_(buSummary),
     shifts: finalizeShifts_(shiftSummary),
     pickers: finalizePickerSummary_(pickerSummary, TARGETS.overall),
+    pickToSortDetails: finalizePickToSortDetails_(pickToSortDetails),
     training: finalizeTrainingSummary_(trainingSummary),
     monthlyTrend: finalizeMonthlyTrend_(
       monthlyTrend,
@@ -1743,6 +1830,46 @@ function finalizeBuDetails_(bu, detailSummary) {
   }));
 }
 
+function finalizePickToSortBu_(buSummary) {
+  const totalCount = BU_GROUPS.reduce((sum, bu) => sum + (buSummary[bu.key] ? buSummary[bu.key].count : 0), 0);
+
+  return BU_GROUPS.map((bu) => {
+    const bucket = buSummary[bu.key] || createBucket_();
+    return {
+      key: bu.key,
+      title: bu.title,
+      label: bu.label,
+      focus: bu.focus,
+      share: totalCount > 0 ? round1_((bucket.count / totalCount) * 100) : 0,
+      ...finalizeBucket_(bucket, TARGETS.pickToSort),
+    };
+  });
+}
+
+function finalizePickToSortDetails_(summary) {
+  const source = summary || createPickToSortSummary_();
+
+  return {
+    overall: finalizeBucket_(source.overall || createBucket_(), TARGETS.pickToSort),
+    totalPick: Math.round(Number(source.totalPick || 0)),
+    shifts: finalizeShifts_(source.shifts || createShiftSummary_()).map((shift) => {
+      const result = finalizeBucket_({ sum: Number(shift.average || 0) * Number(shift.count || 0), count: Number(shift.count || 0) }, TARGETS.pickToSort);
+      return {
+        ...shift,
+        ...result,
+        affiliations: (shift.affiliations || []).map((affiliation) => ({
+          ...affiliation,
+          ...finalizeBucket_({ sum: Number(affiliation.average || 0) * Number(affiliation.count || 0), count: Number(affiliation.count || 0) }, TARGETS.pickToSort),
+        })),
+      };
+    }),
+    bu: finalizePickToSortBu_(source.bu || createBuSummary_()),
+    pickers: finalizePickerSummary_(source.pickers || createPickerSummary_(), TARGETS.pickToSort),
+    startDate: "08/06/2026",
+    sourceColumn: "AK",
+  };
+}
+
 function normalizeBu_(value) {
   const text = String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
 
@@ -1865,6 +1992,7 @@ function isUsableDashboardPayload_(payload) {
       && payload.pickers
       && Array.isArray(payload.pickers.top)
       && Array.isArray(payload.pickers.bottom)
+      && payload.pickToSortDetails
       && Array.isArray(payload.training)
   );
 }
@@ -1924,11 +2052,13 @@ function emptyPayload_(startedAt, startDateText, endDateText) {
       fullRack: finalizeBucket_(createBucket_(), TARGETS.fullRack),
       halfRack: finalizeBucket_(createBucket_(), TARGETS.halfRack),
       ea: finalizeBucket_(createBucket_(), TARGETS.ea),
+      pickToSort: finalizeBucket_(createBucket_(), TARGETS.pickToSort),
     },
     zones: finalizeZones_(createZoneSummary_()),
     bu: finalizeBu_(createBuSummary_()),
     shifts: [],
     pickers: finalizePickerSummary_(createPickerSummary_(), TARGETS.overall),
+    pickToSortDetails: finalizePickToSortDetails_(createPickToSortSummary_()),
     training: [],
     monthlyTrend: finalizeMonthlyTrend_({}, null),
     totalPick: 0,
@@ -1959,6 +2089,10 @@ function normalizePickType_(value) {
 
   if (!text) {
     return "";
+  }
+
+  if (text.includes("pick to sort") || text.includes("pick-to-sort") || text.includes("picktosort") || text.includes("sort")) {
+    return "pickToSort";
   }
 
   if (text.includes("full")) {

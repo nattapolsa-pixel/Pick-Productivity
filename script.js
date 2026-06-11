@@ -2,14 +2,16 @@ const RESULTS_API_URL = "https://script.google.com/macros/s/AKfycbyby7nOGMZe-w8p
 const REFRESH_INTERVAL_MS = 60 * 1000;
 const REQUEST_TIMEOUT_MS = 45000;
 const DAILY_INDEX_TIMEOUT_MS = 90000;
-const DASHBOARD_CACHE_PREFIX = "pickProductivityDashboardCache:v51-picker-zone-column-ah";
+const DASHBOARD_CACHE_PREFIX = "pickProductivityDashboardCache:v55-pick-to-sort-total-pick";
 const TARGET_STORAGE_KEY = "pickProductivityTargets:v1";
+const PICK_TO_SORT_START_DATE_KEY = "2026-06-08";
 
 const DEFAULT_TARGETS = Object.freeze({
   overall: 170,
   fullRack: 170,
   halfRack: 200,
   ea: 170,
+  pickToSort: 170,
   training: 100,
 });
 
@@ -28,6 +30,14 @@ function readStoredTargets() {
 }
 
 const TARGETS = readStoredTargets();
+
+function shouldCountPickTypeOnDate(key, dateKey) {
+  if (key !== "pickToSort") {
+    return true;
+  }
+
+  return Boolean(dateKey && dateKey >= PICK_TO_SORT_START_DATE_KEY);
+}
 
 const CATEGORY_CONFIG = [
   {
@@ -51,12 +61,20 @@ const CATEGORY_CONFIG = [
     mainKpi: "15%",
     target: TARGETS.ea,
   },
+  {
+    key: "pickToSort",
+    title: "Picking Productivity - Pick to Sort",
+    shortTitle: "Pick to Sort",
+    mainKpi: "Focus",
+    target: TARGETS.pickToSort,
+  },
 ];
 
 const PICK_TYPE_DETAILS = [
   { key: "fullRack", title: "Picking Productivity - Full Rack (หยิบ)", label: "Full Rack", target: TARGETS.fullRack },
   { key: "halfRack", title: "Picking Productivity - Half Rack (หยิบ)", label: "Half Rack", target: TARGETS.halfRack },
   { key: "ea", title: "Picking Productivity - EA(หยิบ)", label: "EA", target: TARGETS.ea },
+  { key: "pickToSort", title: "Picking Productivity - Pick to Sort", label: "Pick to Sort", target: TARGETS.pickToSort },
 ];
 
 const ZONE_GROUPS = [
@@ -104,6 +122,7 @@ function getPickTypeTarget(key) {
   if (key === "fullRack") return TARGETS.fullRack;
   if (key === "halfRack") return TARGETS.halfRack;
   if (key === "ea") return TARGETS.ea;
+  if (key === "pickToSort") return TARGETS.pickToSort;
   return TARGETS.overall;
 }
 
@@ -153,10 +172,14 @@ const overallGap = document.querySelector("#overallGap");
 const overallProgress = document.querySelector("#overallProgress");
 const overviewTotalPick = document.querySelector("#overviewTotalPick");
 const overviewTotalPickNote = document.querySelector("#overviewTotalPickNote");
+const overviewPickToSortCard = document.querySelector("#overviewPickToSortCard");
+const overviewPickToSortAverage = document.querySelector("#overviewPickToSortAverage");
+const overviewPickToSortNote = document.querySelector("#overviewPickToSortNote");
 const overviewTrainingCard = document.querySelector("#overviewTrainingCard");
 const overviewTrainingPositiveRate = document.querySelector("#overviewTrainingPositiveRate");
 const overviewTrainingPositiveNote = document.querySelector("#overviewTrainingPositiveNote");
 const categoryGrid = document.querySelector("#categoryGrid");
+const pickToSortGrid = document.querySelector("#pickToSortGrid");
 const shiftGrid = document.querySelector("#shiftGrid");
 const buGrid = document.querySelector("#buGrid");
 const zoneBreakdownGrid = document.querySelector("#zoneBreakdownGrid");
@@ -337,7 +360,8 @@ function showSkeletons() {
       }
     };
 
-    fillIfEmpty(categoryGrid, `<div class="category-card skeleton-card"><h3 class="skeleton-line" style="width:50%"></h3><div class="category-value skeleton-line" style="width:60%"></div></div>`, 3);
+    fillIfEmpty(categoryGrid, `<div class="category-card skeleton-card"><h3 class="skeleton-line" style="width:50%"></h3><div class="category-value skeleton-line" style="width:60%"></div></div>`, 4);
+    fillIfEmpty(pickToSortGrid, `<div class="category-card skeleton-card"><h3 class="skeleton-line" style="width:50%"></h3><div class="category-value skeleton-line" style="width:60%"></div></div>`, 3);
     fillIfEmpty(shiftGrid, `<div class="shift-card skeleton-card"><h3 class="skeleton-line" style="width:40%"></h3><div class="shift-value skeleton-line" style="width:50%"></div></div>`, 3);
     fillIfEmpty(trainingGrid, `<div class="training-card skeleton-card"><h3 class="skeleton-line" style="width:50%"></h3><div class="training-value skeleton-line" style="width:60%"></div></div>`, 3);
     fillIfEmpty(pickerGrid, `<div class="picker-board skeleton-card"><h3 class="skeleton-line" style="width:45%"></h3><div class="picker-row skeleton-line" style="width:100%"></div><div class="picker-row skeleton-line" style="width:92%"></div></div>`, 2);
@@ -348,7 +372,7 @@ function showSkeletons() {
 
 function clearSkeletons() {
   try {
-    [snapshotGrid, categoryGrid, shiftGrid, trainingGrid, pickerGrid, buGrid, zoneBreakdownGrid].forEach((el) => {
+    [snapshotGrid, categoryGrid, pickToSortGrid, shiftGrid, trainingGrid, pickerGrid, buGrid, zoneBreakdownGrid].forEach((el) => {
       if (!el) return;
       // if it contains skeleton-card items, clear so render functions can populate
       const hasSkeleton = Array.from(el.children).some(c => c.classList && c.classList.contains('skeleton-card'));
@@ -628,6 +652,38 @@ function normalizePickerSummary(pickers) {
   };
 }
 
+function createEmptyPickToSortDetails() {
+  return {
+    overall: createSummaryFromKpi(null, TARGETS.pickToSort),
+    totalPick: 0,
+    shifts: [],
+    bu: [],
+    pickers: createEmptyPickerSummary(),
+    startDate: "08/06/2026",
+    sourceColumn: "AK",
+  };
+}
+
+function normalizePickToSortDetails(details, payload = {}) {
+  const fallback = createEmptyPickToSortDetails();
+  const source = details && typeof details === "object" ? details : {};
+  const overall = source.overall || payload.categories?.pickToSort || fallback.overall;
+
+  return {
+    ...fallback,
+    ...source,
+    overall: {
+      ...createSummaryFromKpi(overall, TARGETS.pickToSort),
+      ...overall,
+      target: TARGETS.pickToSort,
+    },
+    totalPick: Number(source.totalPick || 0),
+    shifts: Array.isArray(source.shifts) ? source.shifts : [],
+    bu: Array.isArray(source.bu) ? source.bu : [],
+    pickers: normalizePickerSummary(source.pickers),
+  };
+}
+
 function createEmptyMonthlyProductivityTrend() {
   return {
     month: "",
@@ -685,6 +741,7 @@ function normalizeDashboardPayload(payload) {
       monthlyTrend: normalizeMonthlyProductivityTrend(payload.monthlyTrend),
       totalPick: Number(payload.totalPick || 0),
       pickers: normalizePickerSummary(payload.pickers),
+      pickToSortDetails: normalizePickToSortDetails(payload.pickToSortDetails, payload),
       needsZoneApiUpdate: !Array.isArray(payload.zones),
       needsBuApiUpdate: !Array.isArray(payload.bu),
       needsShiftApiUpdate: !Array.isArray(payload.shifts),
@@ -712,6 +769,7 @@ function normalizeDashboardPayload(payload) {
       fullRack: createSummaryFromKpi(kpiMap.fullRack, TARGETS.fullRack),
       halfRack: createSummaryFromKpi(kpiMap.halfRack, TARGETS.halfRack),
       ea: createSummaryFromKpi(kpiMap.ea, TARGETS.ea),
+      pickToSort: createSummaryFromKpi(kpiMap.pickToSort, TARGETS.pickToSort),
     },
     zones: [],
     bu: [],
@@ -719,6 +777,7 @@ function normalizeDashboardPayload(payload) {
     training: [],
     monthlyTrend: createEmptyMonthlyProductivityTrend(),
     pickers: createEmptyPickerSummary(),
+    pickToSortDetails: createEmptyPickToSortDetails(),
     totalPick: Number(payload.totalPick || 0),
     totalRows: validRows,
     filteredRows: validRows,
@@ -865,6 +924,21 @@ function applyCurrentTargets(payload) {
   payload.pickers = normalizePickerSummary(payload.pickers);
   ["top", "bottom"].forEach((groupKey) => {
     payload.pickers[groupKey].forEach((item) => applyTargetToSummary(item, TARGETS.overall));
+  });
+
+  payload.pickToSortDetails = normalizePickToSortDetails(payload.pickToSortDetails, payload);
+  applyTargetToSummary(payload.pickToSortDetails.overall, TARGETS.pickToSort);
+  (Array.isArray(payload.pickToSortDetails.shifts) ? payload.pickToSortDetails.shifts : []).forEach((shift) => {
+    applyTargetToSummary(shift, TARGETS.pickToSort);
+    (Array.isArray(shift.affiliations) ? shift.affiliations : []).forEach((affiliation) => {
+      applyTargetToSummary(affiliation, TARGETS.pickToSort);
+    });
+  });
+  (Array.isArray(payload.pickToSortDetails.bu) ? payload.pickToSortDetails.bu : []).forEach((bu) => {
+    applyTargetToSummary(bu, TARGETS.pickToSort);
+  });
+  ["top", "bottom"].forEach((groupKey) => {
+    payload.pickToSortDetails.pickers[groupKey].forEach((item) => applyTargetToSummary(item, TARGETS.pickToSort));
   });
 
   return payload;
@@ -1578,6 +1652,8 @@ function renderPresentSummary(payload) {
   const focusBu = (Array.isArray(payload.bu) ? payload.bu : [])
     .filter((item) => item.focus && Number(item.count || 0) > 0)
     .sort((left, right) => Number(left.average || 0) - Number(right.average || 0))[0];
+  const pickToSortItem = categoryItems.find((item) => item.key === "pickToSort") || { label: "Pick to Sort", average: 0, count: 0, target: TARGETS.pickToSort, gap: -TARGETS.pickToSort };
+  const pickToSortInfo = getStatusInfo(pickToSortItem.average, TARGETS.pickToSort);
   const presentRange = getPresentRangeLabel();
   const periodClass = getPresentPeriodClass();
   const overallGapText = overallAverage >= TARGETS.overall
@@ -1589,7 +1665,7 @@ function renderPresentSummary(payload) {
     : `${getComparisonMeta(payload).label || "เทียบวันก่อน"}: ยังไม่มีข้อมูลเทียบ${formatTargetContext(overallAverage, TARGETS.overall, "Pick/Hr")}`;
   const mainFocus = weakestCategory
     ? `${weakestCategory.label} Avg ${formatNumber(weakestCategory.average)} / Target ${weakestCategory.target}`
-    : "ยังไม่มีข้อมูล Rack / EA";
+    : "ยังไม่มีข้อมูลประเภทงาน";
 
   setText(presentPeriodLabel, presentRange);
   setText(presentOverallScore, formatNumber(overallAverage));
@@ -1613,19 +1689,23 @@ function renderPresentSummary(payload) {
   const trainingSentence = trainingSummary.withData > 0
     ? `Training มี ${formatInteger(trainingPositive)} จาก ${formatInteger(trainingSummary.withData)} คนที่ดีขึ้นหรือผ่านเป้า (${trainingPositiveRate}%)`
     : "Training ยังไม่มีข้อมูลเพียงพอสำหรับสรุปเชิงแนวโน้ม";
+  const pickToSortSentence = pickToSortItem.count > 0
+    ? `Pick to Sort Avg ${formatNumber(pickToSortItem.average)} เทียบ Target ${TARGETS.pickToSort} จาก ${formatInteger(pickToSortItem.count)} รายการ`
+    : "Pick to Sort ยังไม่มีข้อมูลในช่วงที่เลือก";
 
   setText(
     presentNarrative,
-    `ภาพรวมช่วง ${presentRange} อยู่ที่ Avg ${formatNumber(overallAverage)} Pick/Hr (${overallGapText}). ${comparisonSentence}. จุดโฟกัสหลักคือ ${mainFocus}. ${shiftSentence}. ${trainingSentence}.`
+    `ภาพรวมช่วง ${presentRange} อยู่ที่ Avg ${formatNumber(overallAverage)} Pick/Hr (${overallGapText}). ${comparisonSentence}. จุดโฟกัสหลักคือ ${mainFocus}. ${pickToSortSentence}. ${shiftSentence}. ${trainingSentence}.`
   );
 
   const kpiCards = [
     { label: "Overall", value: formatNumber(overallAverage), note: `${overallGapText} · ${comparisonSentence}`, className: overallInfo.className },
-    { label: "Rack / EA ที่ควรโฟกัส", value: weakestCategory?.label || "-", note: weakestCategory ? `ต่ำ/สูงกว่าเป้า ${formatSignedNumber(weakestCategory.gap)}` : "ยังไม่มีข้อมูล", className: weakestCategory && weakestCategory.gap >= 0 ? "is-good" : "is-warning" },
+    { label: "ประเภทงานที่ควรโฟกัส", value: weakestCategory?.label || "-", note: weakestCategory ? `ต่ำ/สูงกว่าเป้า ${formatSignedNumber(weakestCategory.gap)}` : "ยังไม่มีข้อมูล", className: weakestCategory && weakestCategory.gap >= 0 ? "is-good" : "is-warning" },
     { label: "Shift ที่ควรดู", value: weakestShift ? (weakestShift.label || weakestShift.title || "-") : "-", note: weakestShift ? `Avg ${formatNumber(weakestShift.average)} · ${formatInteger(weakestShift.count || 0)} รายการ` : "ยังไม่มีข้อมูล", className: weakestShift && Number(weakestShift.average || 0) >= TARGETS.overall ? "is-good" : "is-warning" },
     { label: "Training ดีขึ้น/ผ่านเป้า", value: `${trainingPositiveRate}%`, note: `${formatInteger(trainingPositive)} จาก ${formatInteger(trainingSummary.withData)} คน`, className: trainingPositiveRate >= 60 ? "is-good" : trainingPositiveRate > 0 ? "is-warning" : "is-empty" },
     { label: "Zone ต่ำกว่าเป้า", value: formatInteger(weakZones.length), note: weakZones[0] ? `${weakZones[0].label} ต่ำสุด` : "ไม่มี Zone ต่ำกว่าเป้า", className: weakZones.length > 0 ? "is-warning" : "is-good" },
     { label: "BU Focus", value: focusBu ? (focusBu.label || focusBu.title || "BU") : "-", note: focusBu ? `Avg ${formatNumber(focusBu.average)} · Share ${formatNumber(focusBu.share || 0)}%` : "ยังไม่มีข้อมูล Punthai/Mart", className: focusBu && Number(focusBu.average || 0) >= TARGETS.overall ? "is-good" : "is-warning" },
+    { label: "Pick to Sort", value: formatNumber(pickToSortItem.average), note: pickToSortItem.count > 0 ? `${pickToSortInfo.gapText} · ${formatInteger(pickToSortItem.count)} รายการ` : "ยังไม่มีข้อมูล Pick to Sort", className: pickToSortItem.count > 0 ? pickToSortInfo.className : "is-empty" },
   ];
 
   presentKpiGrid.innerHTML = kpiCards.map((card) => `
@@ -1640,6 +1720,7 @@ function renderPresentSummary(payload) {
     bestCategory ? `${bestCategory.label} ทำได้ดีที่สุดใน Rack / EA: Avg ${formatNumber(bestCategory.average)} เทียบ Target ${bestCategory.target}` : "ยังไม่มีข้อมูล Rack / EA ที่นำมาจัดอันดับ",
     bestShift ? `${bestShift.label || bestShift.title || "Shift"} เป็นกะที่ทำได้ดีที่สุด: Avg ${formatNumber(bestShift.average)}` : "ยังไม่มีข้อมูล Shift ที่นำมาจัดอันดับ",
     trainingSummary.withData > 0 ? `Training ที่ดีขึ้นหรือผ่านเป้าอยู่ที่ ${trainingPositiveRate}% ของคนที่มีข้อมูล` : "Training ยังต้องรอข้อมูลเพิ่ม",
+    pickToSortItem.count > 0 ? `Pick to Sort อยู่ที่ Avg ${formatNumber(pickToSortItem.average)} จาก ${formatInteger(pickToSortItem.count)} รายการ` : "Pick to Sort ยังไม่มีข้อมูลในช่วงที่เลือก",
   ];
 
   const risks = [
@@ -1647,6 +1728,7 @@ function renderPresentSummary(payload) {
     weakestCategory && weakestCategory.gap < 0 ? `${weakestCategory.label} ต่ำกว่า Target มากสุดในกลุ่ม Rack / EA (${formatNumber(Math.abs(weakestCategory.gap))} Pick/Hr)` : "Rack / EA ไม่มีประเภทหลักที่ต่ำกว่าเป้าในช่วงนี้",
     weakZones.length > 0 ? `Zone ที่ควรดูแรกคือ ${weakZones[0].label} Avg ${formatNumber(weakZones[0].average)} ต่ำกว่า Target ${formatNumber(Math.abs(weakZones[0].gap))}` : "Zone ส่วนใหญ่ไม่มีสัญญาณต่ำกว่าเป้า",
     trainingSummary.belowTarget > 0 ? `Training ต่ำกว่า Target ${TARGETS.training} จำนวน ${formatInteger(trainingSummary.belowTarget)} คน` : `Training ไม่มีคนที่ต่ำกว่า Target ${TARGETS.training} จากข้อมูลที่มี`,
+    pickToSortItem.count > 0 && pickToSortItem.average < TARGETS.pickToSort ? `Pick to Sort ต่ำกว่า Target ${TARGETS.pickToSort} อยู่ ${formatNumber(TARGETS.pickToSort - pickToSortItem.average)} Pick/Hr` : "Pick to Sort ไม่มีสัญญาณต่ำกว่าเป้าจากข้อมูลที่มี",
   ];
 
   const actions = [
@@ -1654,6 +1736,7 @@ function renderPresentSummary(payload) {
     weakestShift ? `รีวิววิธีทำงานของ ${weakestShift.label || weakestShift.title || "Shift ที่ต่ำสุด"} เทียบกับกะที่ทำได้ดีที่สุด` : "รอข้อมูล Shift เพิ่มก่อนตัดสินใจเชิงปฏิบัติการ",
     weakZones.length > 0 ? `เปิดดูหน้า Zone เพื่อเจาะ ${weakZones.slice(0, 3).map((zone) => zone.label).join(" / ")} ก่อน` : "ใช้หน้า Zone เพื่อติดตามต่อว่าพื้นที่ไหนเริ่มหลุดเป้า",
     trainingSummary.belowTarget > 0 ? "ให้ Training list เป็นรายการ follow-up รายบุคคลในรอบประชุมถัดไป" : "รักษาแนวโน้ม Training และเพิ่มตัวอย่าง Best Practice จากคนที่ดีขึ้น",
+    pickToSortItem.count > 0 ? "ใช้ Pick to Sort เป็นจุดติดตามแยก เพราะเป็นงานช่วยคัด/ส่งต่อที่ไม่ควรถูกกลืนไปกับ Rack / EA" : "รอข้อมูล Pick to Sort เพิ่ม แล้วค่อยเทียบแนวโน้มกับประเภทงานหลัก",
   ];
 
   renderPresentList(presentHighlights, highlights, "ยังไม่มีข้อมูลจุดเด่นสำหรับช่วงนี้");
@@ -1774,6 +1857,18 @@ function renderOverall(summary, payload = {}) {
   if (overviewTotalPickNote) {
     overviewTotalPickNote.innerHTML = `${escapeHtml(getOverviewTotalPickRangeText(payload))}${getCompareNoteHtml(totalPickValue, payload.previousPayload?.totalPick, payload, "รายการ")}`;
   }
+
+  const pickToSortSummary = payload.categories?.pickToSort || {};
+  const pickToSortAverage = Number(pickToSortSummary.average || 0);
+  const pickToSortInfo = getStatusInfo(pickToSortAverage, TARGETS.pickToSort);
+  if (overviewPickToSortCard) {
+    overviewPickToSortCard.classList.remove("is-good", "is-warning", "is-empty");
+    overviewPickToSortCard.classList.add(pickToSortInfo.className);
+  }
+  if (overviewPickToSortAverage) animateValue(overviewPickToSortAverage, pickToSortAverage, formatNumber);
+  if (overviewPickToSortNote) {
+    overviewPickToSortNote.innerHTML = `${pickToSortInfo.gapText} · ${formatInteger(pickToSortSummary.count || 0)} รายการ${getCompareNoteHtml(pickToSortAverage, payload.previousPayload?.categories?.pickToSort?.average, payload, "Pick/Hr", TARGETS.pickToSort)}`;
+  }
   const overallCompare = getCompareNoteHtml(summary.average, payload.previousPayload?.overall?.average, payload, "Pick/Hr", TARGETS.overall);
   const existingOverallCompare = overallCard.querySelector(".compare-note");
   if (existingOverallCompare) existingOverallCompare.remove();
@@ -1799,7 +1894,7 @@ function renderCategoryCards(categories, payload = {}) {
     const data = categories[config.key] || {};
     const info = getStatusInfo(data.average, config.target);
     const card = document.createElement("article");
-    card.className = `category-card ${info.className}`;
+    card.className = `category-card ${info.className}${config.key === "pickToSort" ? " is-pick-to-sort" : ""}`;
     card.innerHTML = `
       <div class="category-title-row">
         <h3>${config.title}</h3>
@@ -1823,6 +1918,130 @@ function renderCategoryCards(categories, payload = {}) {
     const valueEl = card.querySelector(".category-value");
     animateValue(valueEl, data.average, formatNumber);
   });
+}
+
+function getPickToSortBuItems(payload, details) {
+  const detailBuItems = Array.isArray(details?.bu) ? details.bu.filter((item) => Number(item.count || 0) > 0) : [];
+
+  if (detailBuItems.length > 0) {
+    return detailBuItems;
+  }
+
+  const derived = (Array.isArray(payload?.bu) ? payload.bu : []).map((bu) => {
+    const p2s = (Array.isArray(bu.details) ? bu.details : []).find((detail) => detail.key === "pickToSort") || {};
+    return {
+      key: bu.key,
+      title: bu.title,
+      label: bu.label,
+      focus: bu.focus,
+      share: Number(p2s.count || 0),
+      ...p2s,
+      target: TARGETS.pickToSort,
+    };
+  }).filter((item) => Number(item.count || 0) > 0);
+  const totalCount = derived.reduce((sum, item) => sum + Number(item.count || 0), 0);
+
+  return derived.map((item) => ({
+    ...item,
+    share: totalCount > 0 ? percentOf(Number(item.count || 0), totalCount) : 0,
+  }));
+}
+
+function renderPickToSortDashboard(payload = {}) {
+  if (!pickToSortGrid) return;
+
+  const details = normalizePickToSortDetails(payload.pickToSortDetails, payload);
+  const overall = Number(details.overall?.count || 0) > 0
+    ? details.overall
+    : (payload.categories?.pickToSort || details.overall);
+  const average = Number(overall.average || 0);
+  const count = Number(overall.count || 0);
+  const totalPick = Number(details.totalPick || 0);
+  const info = getStatusInfo(average, TARGETS.pickToSort);
+  const buItems = getPickToSortBuItems(payload, details);
+  const shiftItems = Array.isArray(details.shifts) ? details.shifts.filter((item) => Number(item.count || 0) > 0) : [];
+  const pickerSummary = normalizePickerSummary(details.pickers);
+  const previousAverage = payload.previousPayload?.pickToSortDetails?.overall?.average
+    ?? payload.previousPayload?.categories?.pickToSort?.average;
+
+  const buHtml = buItems.length > 0
+    ? buItems.map((item) => {
+      const itemInfo = getStatusInfo(item.average, TARGETS.pickToSort);
+      return `
+        <article class="p2s-mini-card ${itemInfo.className}">
+          <div>
+            <span>${escapeHtml(item.title || item.label || "BU")}</span>
+            <strong>${formatNumber(item.average)}</strong>
+          </div>
+          <small>${itemInfo.gapText} · ${formatInteger(item.count || 0)} รายการ · Share ${formatNumber(item.share || 0)}%</small>
+          <div class="progress-track"><div class="progress-fill" style="width:${Math.min(itemInfo.progress, 100)}%"></div></div>
+        </article>
+      `;
+    }).join("")
+    : `<article class="p2s-mini-card is-empty"><span>BU</span><strong>-</strong><small>ยังไม่มีข้อมูล Pick to Sort ตาม BU</small></article>`;
+
+  const shiftHtml = shiftItems.length > 0
+    ? shiftItems.map((item) => {
+      const itemInfo = getStatusInfo(item.average, TARGETS.pickToSort);
+      return `
+        <article class="p2s-mini-card ${itemInfo.className}">
+          <div>
+            <span>${escapeHtml(item.label || item.title || "Shift")}</span>
+            <strong>${formatNumber(item.average)}</strong>
+          </div>
+          <small>${itemInfo.gapText} · ${formatInteger(item.count || 0)} รายการ · Share ${formatNumber(item.share || 0)}%</small>
+          <div class="progress-track"><div class="progress-fill" style="width:${Math.min(itemInfo.progress, 100)}%"></div></div>
+        </article>
+      `;
+    }).join("")
+    : `<article class="p2s-mini-card is-empty"><span>Shift</span><strong>-</strong><small>ยังไม่มีข้อมูล Pick to Sort ตามกะ</small></article>`;
+
+  pickToSortGrid.innerHTML = `
+    <section class="p2s-hero-card ${info.className}">
+      <div>
+        <p class="visual-card-eyebrow">PICK TO SORT AVG</p>
+        <h2>${formatNumber(average)}</h2>
+        <span>Target ≥ ${TARGETS.pickToSort} · เริ่มนับ 8/6/2026</span>
+      </div>
+      <div class="p2s-hero-meta">
+        <strong>${info.label}</strong>
+        <span>${info.gapText}</span>
+        <small>${formatInteger(count)} รายการ</small>
+        <div class="p2s-total-pick">
+          <span>Total Pick เฉพาะ Pick to Sort</span>
+          <strong>${formatInteger(totalPick)}</strong>
+        </div>
+        ${getCompareNoteHtml(average, previousAverage, payload, "Pick/Hr", TARGETS.pickToSort)}
+      </div>
+    </section>
+
+    <section class="p2s-section">
+      <div class="p2s-section-head">
+        <div>
+          <p class="visual-card-eyebrow">BU BREAKDOWN</p>
+          <h2>Pick to Sort แยกตาม BU</h2>
+        </div>
+        <span class="status-pill muted">${formatInteger(buItems.length)} BU</span>
+      </div>
+      <div class="p2s-mini-grid">${buHtml}</div>
+    </section>
+
+    <section class="p2s-section">
+      <div class="p2s-section-head">
+        <div>
+          <p class="visual-card-eyebrow">SHIFT BREAKDOWN</p>
+          <h2>Pick to Sort แยกตามกะ</h2>
+        </div>
+        <span class="status-pill muted">${formatInteger(shiftItems.length)} Shift</span>
+      </div>
+      <div class="p2s-mini-grid">${shiftHtml}</div>
+    </section>
+
+    <section class="p2s-picker-grid">
+      ${renderPickerBoard("P2S TOP", "คนที่ทำ Pick to Sort สูงสุด", "คำนวณเฉพาะแถว Pick to Sort จาก Column AK", pickerSummary.top, "ยังไม่มีข้อมูล Top Pick to Sort", payload)}
+      ${renderPickerBoard("P2S BOTTOM", "คนที่ควรโฟกัสใน Pick to Sort", "เรียงจาก Avg Pick/Hr ต่ำไปสูง เฉพาะ Pick to Sort", pickerSummary.bottom, "ยังไม่มีข้อมูล Bottom Pick to Sort", payload)}
+    </section>
+  `;
 }
 
 function renderShiftAffiliations(affiliations) {
@@ -2112,6 +2331,7 @@ function renderZoneBreakdown(zoneGroups, payload = {}) {
 
 function renderPickerBoard(kind, title, subtitle, rows, emptyText, payload = {}) {
   const safeRows = Array.isArray(rows) ? rows : [];
+  const isTopBoard = String(kind || "").toUpperCase().includes("TOP");
   const maxAverage = Math.max(...safeRows.map((item) => Number(item.average || 0)), TARGETS.overall, 1);
 
   if (safeRows.length === 0) {
@@ -2177,14 +2397,14 @@ function renderPickerBoard(kind, title, subtitle, rows, emptyText, payload = {})
   }).join("");
 
   return `
-    <article class="picker-board ${kind === "TOP PICK" ? "is-top" : "is-bottom"}">
+    <article class="picker-board ${isTopBoard ? "is-top" : "is-bottom"}">
       <div class="picker-board-head">
         <div>
           <p class="visual-card-eyebrow">${escapeHtml(kind)}</p>
           <h2 class="visual-card-title">${escapeHtml(title)}</h2>
           <small>${escapeHtml(subtitle)}</small>
         </div>
-        <span class="status-pill ${kind === "TOP PICK" ? "is-good" : "is-warning"}">${safeRows.length} คน</span>
+        <span class="status-pill ${isTopBoard ? "is-good" : "is-warning"}">${safeRows.length} คน</span>
       </div>
       <div class="picker-list">${rowsHtml}</div>
     </article>
@@ -2306,6 +2526,7 @@ function createRawCategorySummary() {
     fullRack: createRawBucket(),
     halfRack: createRawBucket(),
     ea: createRawBucket(),
+    pickToSort: createRawBucket(),
   };
 }
 
@@ -2329,6 +2550,15 @@ function createRawBuSummary() {
   }, {});
 }
 
+function createRawPickToSortSummary() {
+  return {
+    overall: createRawBucket(),
+    totalPick: 0,
+    shifts: {},
+    bu: createRawBuSummary(),
+    pickers: createRawPickerSummary(),
+  };
+}
 
 function createRawPickerSummary() {
   return {};
@@ -2398,7 +2628,7 @@ function topCountLabel(map, fallback) {
   })[0];
 }
 
-function finalizeRawPickers(rawPickers) {
+function finalizeRawPickers(rawPickers, target = TARGETS.overall) {
   const rows = Object.keys(rawPickers || {}).map((key) => {
     const item = rawPickers[key] || {};
     const count = Number(item.count || 0);
@@ -2411,9 +2641,9 @@ function finalizeRawPickers(rawPickers) {
       average: round1(average),
       count,
       totalPick: Math.round(Number(item.totalPick || 0)),
-      target: TARGETS.overall,
-      gap: round1(average - TARGETS.overall),
-      status: average >= TARGETS.overall ? "ผ่าน Target" : "ต่ำกว่า Target",
+      target,
+      gap: round1(average - target),
+      status: average >= target ? "ผ่าน Target" : "ต่ำกว่า Target",
       mainShift: topCountLabel(item.shifts, "ไม่ระบุกะ"),
       mainAffiliation: topCountLabel(item.affiliations, "ไม่ระบุสังกัด"),
       mainBu: topCountLabel(item.bu, "-"),
@@ -2444,6 +2674,7 @@ function createCombinedDailySummary() {
     shifts: {},
     training: createRawTrainingSummary(),
     pickers: createRawPickerSummary(),
+    pickToSortDetails: createRawPickToSortSummary(),
   };
 }
 
@@ -2487,13 +2718,33 @@ function mergeShiftSummary(targetShifts, sourceShifts) {
   });
 }
 
-function mergeDailySummary(combined, day) {
+function mergePickToSortSummary(target, source) {
+  if (!target || !source) {
+    return;
+  }
+
+  addRawBucket(target.overall, source.overall);
+  target.totalPick += Number(source.totalPick || 0);
+  mergeShiftSummary(target.shifts, source.shifts || {});
+
+  BU_GROUPS.forEach((bu) => {
+    addRawBucket(target.bu[bu.key], source.bu?.[bu.key]);
+  });
+
+  mergePickerSummary(target.pickers, source.pickers || {});
+}
+
+function mergeDailySummary(combined, day, dateKey = "") {
   combined.filteredRows += Number(day.filteredRows || 0);
   combined.excludedCount += Number(day.excludedCount || 0);
   combined.totalPick += Number(day.totalPick || 0);
   addRawBucket(combined.overall, day.overall);
 
   Object.keys(combined.categories).forEach((key) => {
+    if (!shouldCountPickTypeOnDate(key, dateKey)) {
+      return;
+    }
+
     addRawBucket(combined.categories[key], day.categories?.[key]);
   });
 
@@ -2507,11 +2758,18 @@ function mergeDailySummary(combined, day) {
     addRawBucket(combined.bu[bu.key], day.bu?.[bu.key]);
 
     PICK_TYPE_DETAILS.forEach((detail) => {
+      if (!shouldCountPickTypeOnDate(detail.key, dateKey)) {
+        return;
+      }
+
       addRawBucket(combined.bu[bu.key].details[detail.key], day.bu?.[bu.key]?.details?.[detail.key]);
     });
   });
 
   mergeShiftSummary(combined.shifts, day.shifts || {});
+  if (shouldCountPickTypeOnDate("pickToSort", dateKey)) {
+    mergePickToSortSummary(combined.pickToSortDetails, day.pickToSortDetails || {});
+  }
   mergeTrainingSummary(combined.training, day.training || {});
   mergePickerSummary(combined.pickers, day.pickers || {});
 }
@@ -2553,7 +2811,34 @@ function finalizeDailyBu(rawBu) {
   }));
 }
 
-function finalizeDailyShifts(rawShifts) {
+function finalizeDailyPickToSortBu(rawBu) {
+  const totalCount = BU_GROUPS.reduce((sum, bu) => sum + Number(rawBu[bu.key]?.count || 0), 0);
+
+  return BU_GROUPS.map((bu) => ({
+    key: bu.key,
+    title: bu.title,
+    label: bu.label,
+    focus: bu.focus,
+    share: totalCount > 0 ? round1((Number(rawBu[bu.key]?.count || 0) / totalCount) * 100) : 0,
+    ...finalizeRawBucket(rawBu[bu.key], TARGETS.pickToSort),
+  }));
+}
+
+function finalizeDailyPickToSortDetails(rawDetails) {
+  const source = rawDetails || createRawPickToSortSummary();
+
+  return {
+    overall: finalizeRawBucket(source.overall, TARGETS.pickToSort),
+    totalPick: Math.round(Number(source.totalPick || 0)),
+    shifts: finalizeDailyShifts(source.shifts, TARGETS.pickToSort),
+    bu: finalizeDailyPickToSortBu(source.bu),
+    pickers: finalizeRawPickers(source.pickers, TARGETS.pickToSort),
+    startDate: "08/06/2026",
+    sourceColumn: "AK",
+  };
+}
+
+function finalizeDailyShifts(rawShifts, target = TARGETS.overall) {
   const shiftNames = Object.keys(rawShifts || {}).sort((left, right) => left.localeCompare(right, "th"));
   const totalCount = shiftNames.reduce((sum, shiftName) => sum + Number(rawShifts[shiftName].bucket?.count || 0), 0);
 
@@ -2573,9 +2858,9 @@ function finalizeDailyShifts(rawShifts) {
         key: `shift${index + 1}_affiliation${affiliationIndex + 1}`,
         title: affiliationName,
         label: affiliationName,
-        ...finalizeRawBucket(item.affiliations[affiliationName], TARGETS.overall),
+        ...finalizeRawBucket(item.affiliations[affiliationName], target),
       })),
-      ...finalizeRawBucket(item.bucket, TARGETS.overall),
+      ...finalizeRawBucket(item.bucket, target),
     };
   });
 }
@@ -2911,7 +3196,7 @@ function buildDashboardFromDailyIndex(indexPayload) {
   seedTrainingSummaryFromRoster(trainingCombined, indexPayload.trainingRoster || []);
 
   selectedKeys.forEach((dateKey) => {
-    mergeDailySummary(combined, indexPayload.dates?.[dateKey] || {});
+    mergeDailySummary(combined, indexPayload.dates?.[dateKey] || {}, dateKey);
   });
 
   dateKeys.forEach((dateKey) => {
@@ -2933,6 +3218,7 @@ function buildDashboardFromDailyIndex(indexPayload) {
       fullRack: finalizeRawBucket(combined.categories.fullRack, TARGETS.fullRack),
       halfRack: finalizeRawBucket(combined.categories.halfRack, TARGETS.halfRack),
       ea: finalizeRawBucket(combined.categories.ea, TARGETS.ea),
+      pickToSort: finalizeRawBucket(combined.categories.pickToSort, TARGETS.pickToSort),
     },
     zones: finalizeDailyZones(combined.zones),
     bu: finalizeDailyBu(combined.bu),
@@ -2940,6 +3226,7 @@ function buildDashboardFromDailyIndex(indexPayload) {
     training: finalizeTrainingFromRaw(trainingCombined),
     monthlyTrend: buildMonthlyProductivityTrendFromDailyIndex(indexPayload, selectedKeys),
     pickers: finalizeRawPickers(combined.pickers),
+    pickToSortDetails: finalizeDailyPickToSortDetails(combined.pickToSortDetails),
     totalPick: combined.totalPick,
     totalPickRange: {
       startDate: selectedKeys.length > 0 ? isoToDmy(selectedKeys[0]) : "",
@@ -3115,6 +3402,7 @@ function renderDashboard(rawPayload, options = {}) {
         const target = entry.target;
         try {
           if (target === categoryGrid) renderCategoryCards(p.categories || {}, p);
+          if (target === pickToSortGrid) renderPickToSortDashboard(p);
           if (target === shiftGrid) renderShiftBreakdown(p.shifts || [], p);
           if (target === buGrid) renderBuBreakdown(p.bu || [], p);
           if (target === trainingGrid) renderTrainingBreakdown(p.training || [], p);
@@ -3125,12 +3413,13 @@ function renderDashboard(rawPayload, options = {}) {
       });
     }, { root: null, rootMargin: '300px', threshold: 0.01 });
 
-    [categoryGrid, shiftGrid, buGrid, trainingGrid, pickerGrid, zoneBreakdownGrid].forEach((el) => {
+    [categoryGrid, pickToSortGrid, shiftGrid, buGrid, trainingGrid, pickerGrid, zoneBreakdownGrid].forEach((el) => {
       if (!el) return;
       // if already has content, render immediately
       if (el.children.length > 0 && !Array.from(el.children).some(c => c.classList.contains('skeleton-card'))) {
         try {
           if (el === categoryGrid) renderCategoryCards(p.categories || {}, p);
+          if (el === pickToSortGrid) renderPickToSortDashboard(p);
           if (el === shiftGrid) renderShiftBreakdown(p.shifts || [], p);
           if (el === buGrid) renderBuBreakdown(p.bu || [], p);
           if (el === trainingGrid) renderTrainingBreakdown(p.training || [], p);
