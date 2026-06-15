@@ -128,8 +128,12 @@ const BU_GROUPS = [
     focus: false,
   },
 ];
+var rosterResolutionCache = {};
+var zoneMatchCache = {};
 
 function doGet(e) {
+  rosterResolutionCache = {};
+  zoneMatchCache = {};
   const params = e && e.parameter ? e.parameter : {};
 
   try {
@@ -506,9 +510,8 @@ function buildDailyIndexPayload_() {
   const dataColumnCount = SHEET_COLUMN.PICK_TYPE - SHEET_COLUMN.DATE + 1;
   const dataRange = sheet.getRange(2, SHEET_COLUMN.DATE, numRows, dataColumnCount);
   const dataValues = dataRange.getValues();
-  const dataDisplayValues = dataRange.getDisplayValues();
   // Name อยู่ Column B ซึ่งอยู่นอกช่วง C:AK จึงอ่านแยก เพื่อให้ Picker แสดงชื่อจริงชัดเจน
-  const nameDisplayValues = sheet.getRange(2, SHEET_COLUMN.NAME, numRows, 1).getDisplayValues();
+  const nameValues = sheet.getRange(2, SHEET_COLUMN.NAME, numRows, 1).getValues();
   const columnOffset = {
     date: SHEET_COLUMN.DATE - SHEET_COLUMN.DATE,
     userId: SHEET_COLUMN.USER_ID - SHEET_COLUMN.DATE,
@@ -527,11 +530,10 @@ function buildDailyIndexPayload_() {
 
   for (let index = 0; index < numRows; index += 1) {
     const rawDateValue = dataValues[index][columnOffset.date];
-    const displayDateValue = dataDisplayValues[index][columnOffset.date];
-    const rowDate = normalizeSheetDate_(rawDateValue, displayDateValue);
+    const rowDate = normalizeSheetDate_(rawDateValue, rawDateValue);
 
     if (!rowDate) {
-      const sampleText = String(displayDateValue || rawDateValue || "").trim();
+      const sampleText = String(rawDateValue || "").trim();
 
       if (sampleText) {
         invalidDateRows += 1;
@@ -549,7 +551,8 @@ function buildDailyIndexPayload_() {
     }
 
     const day = dates[dateKey];
-    const rowTotalPick = getTotalPickValue_(dataValues[index][columnOffset.totalPick], dataDisplayValues[index][columnOffset.totalPick]);
+    const rawTotalPick = dataValues[index][columnOffset.totalPick];
+    const rowTotalPick = getTotalPickValue_(rawTotalPick, rawTotalPick);
     day.filteredRows += 1;
     day.totalPick += rowTotalPick;
 
@@ -560,27 +563,29 @@ function buildDailyIndexPayload_() {
       continue;
     }
 
+    const rawUserId = dataValues[index][columnOffset.userId];
+
     addTrainingValue_(
       day.training,
       trainingRoster,
-      dataDisplayValues[index][columnOffset.userId] || dataValues[index][columnOffset.userId],
+      rawUserId,
       rowDate,
       average
     );
 
     const pickerPickType = normalizePickType_(dataValues[index][columnOffset.pickType]);
-    const pickerBuKey = normalizeBu_(dataDisplayValues[index][columnOffset.bu]);
+    const pickerBuKey = normalizeBu_(dataValues[index][columnOffset.bu]);
     addPickerValue_(
       day.pickers,
-      dataDisplayValues[index][columnOffset.userId] || dataValues[index][columnOffset.userId],
-      nameDisplayValues[index][0],
+      rawUserId,
+      nameValues[index][0],
       average,
       {
-        shift: dataDisplayValues[index][columnOffset.shift],
-        affiliation: dataDisplayValues[index][columnOffset.affiliation],
+        shift: dataValues[index][columnOffset.shift],
+        affiliation: dataValues[index][columnOffset.affiliation],
         buKey: pickerBuKey,
         pickType: pickerPickType,
-        zone: dataDisplayValues[index][columnOffset.position],
+        zone: dataValues[index][columnOffset.position],
         totalPick: rowTotalPick,
       }
     );
@@ -596,28 +601,28 @@ function buildDailyIndexPayload_() {
     if (pickType === "pickToSort" && shouldCountPickType) {
       addPickToSortValue_(
         day.pickToSortDetails,
-        dataDisplayValues[index][columnOffset.userId] || dataValues[index][columnOffset.userId],
-        nameDisplayValues[index][0],
+        rawUserId,
+        nameValues[index][0],
         average,
         {
-          shift: dataDisplayValues[index][columnOffset.shift],
-          affiliation: dataDisplayValues[index][columnOffset.affiliation],
-          bu: dataDisplayValues[index][columnOffset.bu],
-          zone: dataDisplayValues[index][columnOffset.position],
+          shift: dataValues[index][columnOffset.shift],
+          affiliation: dataValues[index][columnOffset.affiliation],
+          bu: dataValues[index][columnOffset.bu],
+          zone: dataValues[index][columnOffset.position],
           totalPick: rowTotalPick,
         }
       );
     }
 
-    const zoneMatch = findZoneMatch_(dataDisplayValues[index][columnOffset.position]);
+    const zoneMatch = findZoneMatch_(dataValues[index][columnOffset.position]);
 
     if (zoneMatch && day.zones[zoneMatch.groupKey] && day.zones[zoneMatch.groupKey][zoneMatch.zoneKey]) {
       addValue_(day.zones[zoneMatch.groupKey][zoneMatch.zoneKey], average);
     }
 
-    addShiftValue_(day.shifts, dataDisplayValues[index][columnOffset.shift], dataDisplayValues[index][columnOffset.affiliation], average);
+    addShiftValue_(day.shifts, dataValues[index][columnOffset.shift], dataValues[index][columnOffset.affiliation], average);
 
-    const buKey = normalizeBu_(dataDisplayValues[index][columnOffset.bu]);
+    const buKey = normalizeBu_(dataValues[index][columnOffset.bu]);
     addValue_(day.bu[buKey], average);
 
     if (pickType && shouldCountPickType && day.bu[buKey].details && day.bu[buKey].details[pickType]) {
@@ -781,9 +786,8 @@ function buildDashboardPayload_(startDateText, endDateText) {
   const dataColumnCount = SHEET_COLUMN.PICK_TYPE - SHEET_COLUMN.DATE + 1;
   const dataRange = sheet.getRange(2, SHEET_COLUMN.DATE, numRows, dataColumnCount);
   const dataValues = dataRange.getValues();
-  const dataDisplayValues = dataRange.getDisplayValues();
   // Name อยู่ Column B ซึ่งอยู่นอกช่วง C:AK จึงอ่านแยก เพื่อให้ Picker แสดงชื่อจริงชัดเจน
-  const nameDisplayValues = sheet.getRange(2, SHEET_COLUMN.NAME, numRows, 1).getDisplayValues();
+  const nameValues = sheet.getRange(2, SHEET_COLUMN.NAME, numRows, 1).getValues();
   const shouldFilterByDate = Boolean(startDate || endDate);
   const columnOffset = {
     date: SHEET_COLUMN.DATE - SHEET_COLUMN.DATE,
@@ -838,16 +842,18 @@ function buildDashboardPayload_(startDateText, endDateText) {
 
   for (let index = 0; index < numRows; index += 1) {
     const rawDateValueForTraining = dataValues[index][columnOffset.date];
-    const displayDateValueForTraining = dataDisplayValues[index][columnOffset.date];
-    const rowDateForTraining = normalizeSheetDate_(rawDateValueForTraining, displayDateValueForTraining);
+    const rowDateForTraining = normalizeSheetDate_(rawDateValueForTraining, rawDateValueForTraining);
     const average = toNumber_(dataValues[index][columnOffset.average]);
-    const rowTotalPick = getTotalPickValue_(dataValues[index][columnOffset.totalPick], dataDisplayValues[index][columnOffset.totalPick]);
+    const rawTotalPick = dataValues[index][columnOffset.totalPick];
+    const rowTotalPick = getTotalPickValue_(rawTotalPick, rawTotalPick);
+
+    const rawUserId = dataValues[index][columnOffset.userId];
 
     if (average > 0) {
       addTrainingValue_(
         trainingSummary,
         trainingRoster,
-        dataDisplayValues[index][columnOffset.userId] || dataValues[index][columnOffset.userId],
+        rawUserId,
         rowDateForTraining,
         average
       );
@@ -862,11 +868,10 @@ function buildDashboardPayload_(startDateText, endDateText) {
 
     if (shouldFilterByDate) {
       const rawDateValue = rawDateValueForTraining;
-      const displayDateValue = displayDateValueForTraining;
       const rowDate = rowDateForTraining;
 
       if (!rowDate) {
-        const sampleText = String(displayDateValue || rawDateValue || "").trim();
+        const sampleText = String(rawDateValue || "").trim();
 
         if (sampleText) {
           filterDiagnostics.invalidDateRows += 1;
@@ -928,18 +933,18 @@ function buildDashboardPayload_(startDateText, endDateText) {
 
     const pickType = normalizePickType_(dataValues[index][columnOffset.pickType]);
     const shouldCountPickType = shouldCountPickTypeOnDate_(pickType, rowDateForTraining);
-    const buKey = normalizeBu_(dataDisplayValues[index][columnOffset.bu]);
+    const buKey = normalizeBu_(dataValues[index][columnOffset.bu]);
     addPickerValue_(
       pickerSummary,
-      dataDisplayValues[index][columnOffset.userId] || dataValues[index][columnOffset.userId],
-      nameDisplayValues[index][0],
+      rawUserId,
+      nameValues[index][0],
       average,
       {
-        shift: dataDisplayValues[index][columnOffset.shift],
-        affiliation: dataDisplayValues[index][columnOffset.affiliation],
+        shift: dataValues[index][columnOffset.shift],
+        affiliation: dataValues[index][columnOffset.affiliation],
         buKey: buKey,
         pickType: pickType,
-        zone: dataDisplayValues[index][columnOffset.position],
+        zone: dataValues[index][columnOffset.position],
         totalPick: rowTotalPick,
       }
     );
@@ -951,26 +956,26 @@ function buildDashboardPayload_(startDateText, endDateText) {
     if (pickType === "pickToSort" && shouldCountPickType) {
       addPickToSortValue_(
         pickToSortDetails,
-        dataDisplayValues[index][columnOffset.userId] || dataValues[index][columnOffset.userId],
-        nameDisplayValues[index][0],
+        rawUserId,
+        nameValues[index][0],
         average,
         {
-          shift: dataDisplayValues[index][columnOffset.shift],
-          affiliation: dataDisplayValues[index][columnOffset.affiliation],
-          bu: dataDisplayValues[index][columnOffset.bu],
-          zone: dataDisplayValues[index][columnOffset.position],
+          shift: dataValues[index][columnOffset.shift],
+          affiliation: dataValues[index][columnOffset.affiliation],
+          bu: dataValues[index][columnOffset.bu],
+          zone: dataValues[index][columnOffset.position],
           totalPick: rowTotalPick,
         }
       );
     }
 
-    const zoneMatch = findZoneMatch_(dataDisplayValues[index][columnOffset.position]);
+    const zoneMatch = findZoneMatch_(dataValues[index][columnOffset.position]);
 
     if (zoneMatch && zoneSummary[zoneMatch.groupKey] && zoneSummary[zoneMatch.groupKey][zoneMatch.zoneKey]) {
       addValue_(zoneSummary[zoneMatch.groupKey][zoneMatch.zoneKey], average);
     }
 
-    addShiftValue_(shiftSummary, dataDisplayValues[index][columnOffset.shift], dataDisplayValues[index][columnOffset.affiliation], average);
+    addShiftValue_(shiftSummary, dataValues[index][columnOffset.shift], dataValues[index][columnOffset.affiliation], average);
 
     addValue_(buSummary[buKey], average);
 

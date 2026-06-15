@@ -3176,10 +3176,18 @@ function buildMonthlyProductivityTrendFromDailyIndex(indexPayload, selectedKeys)
   };
 }
 
-function buildDashboardFromDailyIndex(indexPayload) {
+function buildDashboardFromDailyIndex(indexPayload, filterStartDate = null, filterEndDate = null) {
   const dateKeys = Array.isArray(indexPayload?.dateKeys) ? indexPayload.dateKeys : [];
-  const startDate = startDateInput.value || "";
-  const endDate = endDateInput.value || "";
+
+  if (selectedRange === "latest" && filterStartDate === null && filterEndDate === null && (!startDateInput.value || !endDateInput.value)) {
+    const latestDate = dateKeys[dateKeys.length - 1];
+    if (latestDate) {
+      setDateFilterToSingleDay(latestDate);
+    }
+  }
+
+  const startDate = filterStartDate !== null ? filterStartDate : (startDateInput.value || "");
+  const endDate = filterEndDate !== null ? filterEndDate : (endDateInput.value || "");
   const selectedKeys = dateKeys.filter((dateKey) => {
     if (startDate && dateKey < startDate) {
       return false;
@@ -3283,6 +3291,11 @@ function loadDailyIndexFromLocalCache() {
 function saveDailyIndexToLocalCache(payload) {
   try {
     localStorage.setItem(getDailyIndexCacheKey(), JSON.stringify(payload));
+  } catch (error) {
+    console.warn(error);
+  }
+  try {
+    idbPut(getDailyIndexCacheKey(), payload);
   } catch (error) {
     console.warn(error);
   }
@@ -3710,94 +3723,83 @@ async function loadDashboard(options = {}) {
 
   isLoading = true;
 
-  // show loading modal with an estimate (use timeout as upper bound) only when not silent
-  try {
-    if (!silent) {
-      const estimateMs = force ? Math.min(REQUEST_TIMEOUT_MS, 20000) : Math.min(REQUEST_TIMEOUT_MS, 8000);
-      showLoadingModal(estimateMs);
-    }
-  } catch (e) {
-    // ignore
-  }
-
   if (refreshButton && (!silent || force)) {
     refreshButton.disabled = true;
     refreshButton.textContent = force ? "คำนวณสด..." : "กำลังรีเฟรช...";
   }
 
-  if (!silent) {
-    setSyncStatus(force ? "กำลังคำนวณข้อมูลสดจาก Results Master..." : "กำลังดึง Dashboard จาก cache...");
+  // 1. Try to load Daily Index from LocalCache/IndexedDB first if not already loaded in memory
+  if (!dailyIndexPayload) {
+    loadDailyIndexFromLocalCache();
   }
 
-  try {
-    let payload = await fetchDashboardPayload({ force });
-    const isLatestRequest = selectedRange === "latest";
-    const shouldDiscoverLatestDate = isLatestRequest
-      && (force || !startDateInput?.value || !endDateInput?.value);
-
-    if (shouldDiscoverLatestDate) {
-      clearDateFilter();
-      syncQuickFilterActiveState();
-      setSyncStatus("กำลังค้นหาวันล่าสุดที่มีข้อมูล...");
-      const latestResult = await fetchLatestDashboardPayload({ force }, payload);
-      payload = latestResult.payload;
-    }
-
-    const todayKey = getRelativeDateInputValue(0);
-    const isSingleTodayRequest = selectedRange === "today"
-      && startDateInput?.value === todayKey
-      && endDateInput?.value === todayKey;
-
-    if (isSingleTodayRequest && !hasDashboardData(normalizeDashboardPayload(payload))) {
-      const yesterdayKey = getRelativeDateInputValue(-1);
-      selectedRange = "autoYesterday";
-      setDateFilterToSingleDay(yesterdayKey);
-      syncQuickFilterActiveState();
-      setSyncStatus("วันนี้ยังไม่มีข้อมูล กำลังโหลดข้อมูลของเมื่อวานแทน...");
-      payload = await fetchDashboardPayload({ force });
-
-      if (!hasDashboardData(normalizeDashboardPayload(payload))) {
-        selectedRange = "autoLatest";
-        syncQuickFilterActiveState();
-        clearDateFilter();
-        setSyncStatus("วันนี้และเมื่อวานยังไม่มีข้อมูล กำลังโหลดวันล่าสุดที่มีข้อมูลแทน...");
-        const latestResult = await fetchLatestDashboardPayload({ force });
-        payload = latestResult.payload;
+  if (!dailyIndexPayload) {
+    try {
+      const cachedIdb = await idbGet(getDailyIndexCacheKey());
+      if (cachedIdb?.ok && cachedIdb.mode === "dailyIndex") {
+        dailyIndexPayload = cachedIdb;
       }
+    } catch (e) {
+      console.warn("IndexedDB load failed", e);
     }
+  }
 
-    const sourceLabel = selectedRange === "latest"
-      ? "แสดงวันล่าสุดที่มีข้อมูล"
-      : selectedRange === "autoYesterday"
-        ? "แสดงเมื่อวานแทน"
-        : selectedRange === "autoLatest"
-          ? "แสดงวันล่าสุดแทน"
-          : undefined;
-    let preparedPayload = applyCurrentTargets(normalizeDashboardPayload(payload));
-    preparedPayload = await attachComparisonPayload(preparedPayload, { force });
-    const normalizedPayload = renderDashboard(preparedPayload, { sourceLabel });
-    saveDashboardToLocalCache(normalizedPayload);
+  // 2. If we have the Daily Index, perform fast client-side rendering
+  if (dailyIndexPayload && dailyIndexPayload.ok) {
+    try {
+      // Calculate dashboard client-side
+      let payload = buildDashboardFromDailyIndex(dailyIndexPayload);
+      
+      // Attach comparison client-side from the same daily index
+      payload = await attachComparisonPayload(payload, { force });
+      
+      // Render the dashboard immediately
+      const sourceLabel = selectedRange === "latest" ? "วันล่าสุด (กรองในเครื่อง)" : "กรองข้อมูลทันที (ในเครื่อง)";
+      renderDashboard(payload, { sourceLabel });
+      
+      // Finish fast path
+      isLoading = false;
+      if (refreshButton) {
+        refreshButton.disabled = false;
+        refreshButton.textContent = "รีเฟรช";
+      }
+      
+      // Now, in the background, fetch updates from the server if forced or cache is old (60s)
+      const cacheAge = dailyIndexPayload.generatedAt ? (Date.now() - new Date(dailyIndexPayload.generatedAt).getTime()) / 1000 : Infinity;
+      if (force || cacheAge > 60) {
+        // Fetch new index silently in background
+        loadDailyIndex({ force, renderAfterLoad: true }).catch(console.error);
+      }
+      return;
+    } catch (err) {
+      console.warn("Fast client rendering failed, falling back to network", err);
+    }
+  }
 
-    // complete progress and hide
-    try { setLoadingProgress(100); } catch (e) {}
-    await new Promise((r) => setTimeout(r, 500));
-    try { hideLoadingModal(); } catch (e) {}
+  // 3. Fallback to normal loading if no cached Daily Index is available
+  try {
+    if (!silent) {
+      showLoadingModal(8000);
+      setSyncStatus("กำลังดาวน์โหลดข้อมูลใหม่จากเซิร์ฟเวอร์...");
+    }
+    
+    // Fetch Daily Index from server and render
+    const payload = await loadDailyIndex({ force, renderAfterLoad: true });
+    if (!payload || !payload.ok) {
+      throw new Error("ดาวน์โหลดข้อมูลล้มเหลว");
+    }
   } catch (error) {
     console.error(error);
-
     try { hideLoadingModal(); } catch (e) {}
-
     if (!renderDashboardFromLocalCache()) {
       setSyncStatus(`โหลดข้อมูลไม่สำเร็จ: ${error.message}`);
     }
   } finally {
     isLoading = false;
-
     if (refreshButton) {
       refreshButton.disabled = false;
       refreshButton.textContent = "รีเฟรช";
     }
-
     try { hideLoadingModal(); } catch (e) {}
   }
 }
@@ -3972,6 +3974,19 @@ async function attachComparisonPayload(currentPayload, options = {}) {
   const range = getComparisonRangeForCurrentFilter();
   if (!range || !range.startDate || !range.endDate) {
     return currentPayload;
+  }
+
+  if (dailyIndexPayload && dailyIndexPayload.ok) {
+    try {
+      const previousPayload = applyCurrentTargets(buildDashboardFromDailyIndex(dailyIndexPayload, range.startDate, range.endDate));
+      return {
+        ...currentPayload,
+        previousPayload,
+        comparisonMeta: range,
+      };
+    } catch (err) {
+      console.warn("Client comparison failed, falling back to network", err);
+    }
   }
 
   try {
@@ -4192,12 +4207,9 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
-// v35: ไม่โหลด Daily Index ตอนเปิดเว็บ เพื่อลดเวลารอและลดโอกาส Apps Script timeout
 initializeTargetSettings();
-dailyIndexPayload = null;
 initializeDefaultDateFilter();
-const showedInitialCache = renderDashboardFromLocalCache();
-loadDashboard({ silent: showedInitialCache });
+loadDashboard({ silent: false });
 
 setInterval(() => {
   loadDashboard({ silent: true });
