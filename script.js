@@ -3407,47 +3407,25 @@ function renderDashboard(rawPayload, options = {}) {
   // Hide loading modal early so user sees content right away
   try { hideLoadingModal(); } catch (e) {}
 
-  // Defer heavier renders to idle time so initial paint is fast
-  const setupLazyObservers = (p) => {
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (!entry.isIntersecting) return;
-        const target = entry.target;
-        try {
-          if (target === categoryGrid) renderCategoryCards(p.categories || {}, p);
-          if (target === pickToSortGrid) renderPickToSortDashboard(p);
-          if (target === shiftGrid) renderShiftBreakdown(p.shifts || [], p);
-          if (target === buGrid) renderBuBreakdown(p.bu || [], p);
-          if (target === trainingGrid) renderTrainingBreakdown(p.training || [], p);
-          if (target === pickerGrid) renderPickerRankings(p.pickers || {}, p);
-          if (target === zoneBreakdownGrid) renderZoneBreakdown(p.zones || [], p);
-        } catch (e) { console.warn(e); }
-        observer.unobserve(target);
-      });
-    }, { root: null, rootMargin: '300px', threshold: 0.01 });
-
-    [categoryGrid, pickToSortGrid, shiftGrid, buGrid, trainingGrid, pickerGrid, zoneBreakdownGrid].forEach((el) => {
-      if (!el) return;
-      // if already has content, render immediately
-      if (el.children.length > 0 && !Array.from(el.children).some(c => c.classList.contains('skeleton-card'))) {
-        try {
-          if (el === categoryGrid) renderCategoryCards(p.categories || {}, p);
-          if (el === pickToSortGrid) renderPickToSortDashboard(p);
-          if (el === shiftGrid) renderShiftBreakdown(p.shifts || [], p);
-          if (el === buGrid) renderBuBreakdown(p.bu || [], p);
-          if (el === trainingGrid) renderTrainingBreakdown(p.training || [], p);
-          if (el === pickerGrid) renderPickerRankings(p.pickers || {}, p);
-          if (el === zoneBreakdownGrid) renderZoneBreakdown(p.zones || [], p);
-        } catch (e) { console.warn(e); }
-      } else {
-        observer.observe(el);
-      }
-    });
+  // Pre-render all dashboard tab pages eagerly so that tab switching is instant
+  const preRenderAllTabs = (p) => {
+    try {
+      clearSkeletons();
+      if (categoryGrid) renderCategoryCards(p.categories || {}, p);
+      if (pickToSortGrid) renderPickToSortDashboard(p);
+      if (shiftGrid) renderShiftBreakdown(p.shifts || [], p);
+      if (buGrid) renderBuBreakdown(p.bu || [], p);
+      if (trainingGrid) renderTrainingBreakdown(p.training || [], p);
+      if (pickerGrid) renderPickerRankings(p.pickers || {}, p);
+      if (zoneBreakdownGrid) renderZoneBreakdown(p.zones || [], p);
+    } catch (e) {
+      console.warn("Pre-rendering all tabs failed", e);
+    }
   };
 
   const doDeferred = () => {
     try { renderVisualOverview(payload); } catch (e) { console.warn(e); }
-    try { setupLazyObservers(payload); } catch (e) { console.warn(e); }
+    try { preRenderAllTabs(payload); } catch (e) { console.warn(e); }
     if (payload.trainingDebug) console.log("TRAINING DEBUG", payload.trainingDebug);
   };
 
