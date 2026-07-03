@@ -6,6 +6,8 @@ const DASHBOARD_CACHE_PREFIX = "pickProductivityDashboardCache:v55-pick-to-sort-
 const TARGET_STORAGE_KEY = "pickProductivityTargets:v1";
 const PICK_TO_SORT_START_DATE_KEY = "2026-06-08";
 
+let currentAffiliationChartTab = "compare";
+
 const DEFAULT_TARGETS = Object.freeze({
   overall: 170,
   fullRack: 170,
@@ -15,9 +17,46 @@ const DEFAULT_TARGETS = Object.freeze({
   training: 100,
 });
 
+function setCookie(name, value, days = 365) {
+  try {
+    const date = new Date();
+    date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+    const expires = "; expires=" + date.toUTCString();
+    document.cookie = name + "=" + encodeURIComponent(JSON.stringify(value) || "") + expires + "; path=/; SameSite=Lax";
+  } catch (e) {
+    console.warn("Cookie save failed", e);
+  }
+}
+
+function getCookie(name) {
+  try {
+    const nameEQ = name + "=";
+    const ca = document.cookie.split(';');
+    for(let i=0; i < ca.length; i++) {
+      let c = ca[i];
+      while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+      if (c.indexOf(nameEQ) === 0) {
+        return JSON.parse(decodeURIComponent(c.substring(nameEQ.length, c.length)));
+      }
+    }
+  } catch (e) {
+    console.warn("Cookie read failed", e);
+  }
+  return null;
+}
+
 function readStoredTargets() {
   try {
-    const saved = JSON.parse(localStorage.getItem(TARGET_STORAGE_KEY) || "{}");
+    let saved = {};
+    const localSaved = localStorage.getItem(TARGET_STORAGE_KEY);
+    if (localSaved) {
+      saved = JSON.parse(localSaved);
+    } else {
+      const cookieSaved = getCookie(TARGET_STORAGE_KEY);
+      if (cookieSaved && typeof cookieSaved === "object") {
+        saved = cookieSaved;
+      }
+    }
     return Object.keys(DEFAULT_TARGETS).reduce((config, key) => {
       const value = Number(saved[key]);
       config[key] = Number.isFinite(value) && value > 0 ? Math.round(value) : DEFAULT_TARGETS[key];
@@ -141,7 +180,19 @@ function syncTargetReferences() {
 }
 
 function saveTargetsToStorage() {
-  localStorage.setItem(TARGET_STORAGE_KEY, JSON.stringify(TARGETS));
+  try {
+    localStorage.setItem(TARGET_STORAGE_KEY, JSON.stringify(TARGETS));
+  } catch (e) {
+    console.warn("LocalStorage save target failed", e);
+  }
+  
+  setCookie(TARGET_STORAGE_KEY, TARGETS);
+  
+  try {
+    idbPut(TARGET_STORAGE_KEY, TARGETS);
+  } catch (error) {
+    console.warn("IndexedDB save target failed", error);
+  }
 }
 
 syncTargetReferences();
@@ -615,7 +666,7 @@ function createSummaryFromKpi(kpi, target, fallbackTotalRows = 0, fallbackExclud
 
 
 function createEmptyPickerSummary() {
-  return { total: 0, top: [], bottom: [] };
+  return { total: 0, top: [], bottom: [], all: [] };
 }
 
 function normalizePickerSummary(pickers) {
@@ -645,10 +696,12 @@ function normalizePickerSummary(pickers) {
 
   const top = normalizeRows(pickers.top);
   const bottom = normalizeRows(pickers.bottom);
+  const all = normalizeRows(pickers.all);
   return {
-    total: Number(pickers.total || Math.max(top.length, bottom.length, 0)),
+    total: Number(pickers.total || Math.max(top.length, bottom.length, all.length, 0)),
     top,
     bottom,
+    all,
   };
 }
 
@@ -1103,12 +1156,21 @@ function buildMonthlyProductivitySvg(days, metricLabel) {
   const path = points.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
   const targetY = yOf(TARGETS.overall);
 
+  // Closed path for area fill under the line
+  let areaPath = "";
+  if (points.length > 0) {
+    const firstPoint = points[0];
+    const lastPoint = points[points.length - 1];
+    const yBottom = pad.top + plotHeight;
+    areaPath = `M ${firstPoint.x} ${yBottom} L ${firstPoint.x} ${firstPoint.y} ${points.slice(1).map(p => `L ${p.x} ${p.y}`).join(" ")} L ${lastPoint.x} ${yBottom} Z`;
+  }
+
   const grid = [0, 0.5, 1].map((ratio) => {
     const value = scaleMax * ratio;
     const y = yOf(value);
     return `
-      <line class="monthly-chart-grid" x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}"></line>
-      <text class="monthly-chart-axis" x="${pad.left - 10}" y="${y + 4}" text-anchor="end">${escapeHtml(formatProductivityValue(value))}</text>
+      <line class="monthly-chart-grid" x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" stroke="var(--border-subtle)"></line>
+      <text class="monthly-chart-axis" x="${pad.left - 10}" y="${y + 4}" text-anchor="end" fill="var(--text-muted)" style="font-family: var(--font-mono); font-size: 11px;">${escapeHtml(formatProductivityValue(value))}</text>
     `;
   }).join("");
 
@@ -1120,9 +1182,13 @@ function buildMonthlyProductivitySvg(days, metricLabel) {
       ? `${formatInteger(day.count)} รายการ · Total pick ${formatInteger(day.totalPick)}`
       : "";
 
+    const isGood = day.hasData && day.productivity >= TARGETS.overall;
+    const barFill = isGood ? "url(#barGoodGradDaily)" : "url(#barWarnGradDaily)";
+
     return `
-      <rect class="monthly-chart-bar ${day.hasData ? day.trend || "flat" : "no-data"}" 
+      <rect class="monthly-chart-bar" 
             x="${x - (barWidth / 2)}" y="${y}" width="${barWidth}" height="${barHeight}" rx="4"
+            style="fill: ${barFill}; opacity: 0.75; transition: all 0.2s;"
             data-tooltip-title="${escapeHtml(day.dateLabel)}"
             data-tooltip-value="${escapeHtml(day.hasData ? formatProductivityValue(day.productivity) + ' ' + metricLabel : 'ไม่มีข้อมูล')}"
             data-tooltip-detail="${escapeHtml(detailText)}"
@@ -1136,31 +1202,79 @@ function buildMonthlyProductivitySvg(days, metricLabel) {
     const detailText = day.hasData
       ? `${formatInteger(day.count)} รายการ · Total pick ${formatInteger(day.totalPick)}`
       : "";
+    
+    const isGood = day.productivity >= TARGETS.overall;
+    const color = isGood ? "var(--good)" : "var(--warn)";
+
     return `
-      <circle class="monthly-chart-dot ${day.trend || "flat"}" cx="${point.x}" cy="${point.y}" r="4"
-              data-tooltip-title="${escapeHtml(day.dateLabel)}"
-              data-tooltip-value="${escapeHtml(formatProductivityValue(day.productivity) + ' ' + metricLabel)}"
-              data-tooltip-detail="${escapeHtml(detailText)}"
-              data-tooltip-trend="${day.trend || 'none'}">
-      </circle>
+      <g class="monthly-chart-dot-group" style="cursor: pointer;"
+         data-tooltip-title="${escapeHtml(day.dateLabel)}"
+         data-tooltip-value="${escapeHtml(formatProductivityValue(day.productivity) + ' ' + metricLabel)}"
+         data-tooltip-detail="${escapeHtml(detailText)}"
+         data-tooltip-trend="${day.trend || 'none'}">
+        <circle cx="${point.x}" cy="${point.y}" r="8" fill="var(--bg-surface)" stroke="${color}" stroke-width="2.5" />
+        <circle cx="${point.x}" cy="${point.y}" r="3.5" fill="${color}" />
+      </g>
     `;
   }).join("");
 
   const labels = safeDays.map((day, index) => {
     const x = pad.left + (index * step);
-    return `<text class="monthly-chart-date" x="${x}" y="${height - 24}" text-anchor="middle">${escapeHtml(String(day.day || index + 1))}</text>`;
+    return `<text class="monthly-chart-date" x="${x}" y="${height - 24}" text-anchor="middle" fill="var(--text-secondary)" style="font-family: var(--font-body); font-size: 11px;">${escapeHtml(String(day.day || index + 1))}</text>`;
   }).join("");
 
   return `
     <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="กราฟ Productivity รายวันตั้งแต่วันที่ 1 ถึงวันสิ้นเดือน">
+      <defs>
+        <!-- Area gradient under the line -->
+        <linearGradient id="areaGradientDaily" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--blue)" stop-opacity="0.25"/>
+          <stop offset="100%" stop-color="var(--blue)" stop-opacity="0.00"/>
+        </linearGradient>
+        
+        <!-- Bar gradients -->
+        <linearGradient id="barGoodGradDaily" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--good)" stop-opacity="0.85"/>
+          <stop offset="100%" stop-color="var(--good)" stop-opacity="0.15"/>
+        </linearGradient>
+        <linearGradient id="barWarnGradDaily" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--warn)" stop-opacity="0.85"/>
+          <stop offset="100%" stop-color="var(--warn)" stop-opacity="0.15"/>
+        </linearGradient>
+        <linearGradient id="barDefaultGradDaily" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--blue)" stop-opacity="0.85"/>
+          <stop offset="100%" stop-color="var(--blue)" stop-opacity="0.15"/>
+        </linearGradient>
+
+        <!-- Drop shadow for the trend line -->
+        <filter id="lineShadowDaily" x="-10%" y="-10%" width="120%" height="120%">
+          <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#000" flood-opacity="0.3"/>
+        </filter>
+      </defs>
+
       ${grid}
-      <line class="monthly-chart-target" x1="${pad.left}" y1="${targetY}" x2="${width - pad.right}" y2="${targetY}"></line>
-      <text class="monthly-chart-target-label" x="${width - pad.right}" y="${targetY - 8}" text-anchor="end">Target ${TARGETS.overall}</text>
+      
+      <!-- Target Reference Line -->
+      <line class="monthly-chart-target" x1="${pad.left}" y1="${targetY}" x2="${width - pad.right}" y2="${targetY}" stroke="var(--warn)" stroke-width="2" stroke-dasharray="6 6" style="opacity: 0.85;"></line>
+      <text class="monthly-chart-target-label" x="${width - pad.right}" y="${targetY - 8}" text-anchor="end" fill="var(--warn)" style="font-family: var(--font-body); font-weight: 700; font-size: 11px;">Target ${TARGETS.overall}</text>
+      
+      <!-- Gradient Bars -->
       ${bars}
-      <path class="monthly-chart-line" d="${path}"></path>
+      
+      <!-- Line Area Fill -->
+      ${areaPath ? `<path d="${areaPath}" fill="url(#areaGradientDaily)" style="pointer-events: none;"></path>` : ""}
+      
+      <!-- Glowing Line Path -->
+      <path class="monthly-chart-line" d="${path}" stroke="var(--blue)" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#lineShadowDaily)"></path>
+      
+      <!-- Floating Rings Dots -->
       ${dots}
+      
+      <!-- X-axis Labels -->
       ${labels}
-      <text class="monthly-chart-title" x="${pad.left}" y="${height - 8}">${escapeHtml(metricLabel)} / วันที่ของเดือน</text>
+      
+      <!-- Y-axis Label -->
+      <text class="monthly-chart-title" x="${pad.left}" y="${height - 8}" fill="var(--text-muted)" style="font-family: var(--font-body); font-size: 11px;">${escapeHtml(metricLabel)} / วันที่ของเดือน</text>
     </svg>
   `;
 }
@@ -1168,10 +1282,8 @@ function buildMonthlyProductivitySvg(days, metricLabel) {
 let chartTooltipInitialized = false;
 
 function setupChartTooltips() {
-  if (chartTooltipInitialized) return;
-  const chartContainer = document.querySelector("#monthlyProductivityChart");
-  if (!chartContainer) return;
-
+  const containers = ["#monthlyProductivityChart", "#monthlyChartContainer"];
+  
   let tooltip = document.querySelector("#chartTooltip");
   if (!tooltip) {
     tooltip = document.createElement("div");
@@ -1184,40 +1296,48 @@ function setupChartTooltips() {
     document.body.appendChild(tooltip);
   }
 
-  chartContainer.addEventListener("mouseover", (e) => {
-    const target = e.target.closest("[data-tooltip-title]");
-    if (!target) return;
+  containers.forEach(selector => {
+    const container = document.querySelector(selector);
+    if (!container) return;
+    
+    if (container.dataset.tooltipBound) return;
+    container.dataset.tooltipBound = "true";
 
-    const title = target.getAttribute("data-tooltip-title");
-    const val = target.getAttribute("data-tooltip-value");
-    const detail = target.getAttribute("data-tooltip-detail");
-    const trend = target.getAttribute("data-tooltip-trend");
+    container.addEventListener("mouseover", (e) => {
+      const target = e.target.closest("[data-tooltip-title]");
+      if (!target) return;
 
-    let trendIcon = "⚪";
-    if (trend === "up") trendIcon = "🟢 ▲";
-    if (trend === "down") trendIcon = "🔴 ▼";
-    if (trend === "flat") trendIcon = "🟡 ▬";
+      const title = target.getAttribute("data-tooltip-title");
+      const val = target.getAttribute("data-tooltip-value");
+      const detail = target.getAttribute("data-tooltip-detail");
+      const trend = target.getAttribute("data-tooltip-trend");
 
-    tooltip.innerHTML = `
-      <div class="tooltip-title">${title}</div>
-      <div class="tooltip-value">${val} <span class="tooltip-trend">${trendIcon}</span></div>
-      ${detail ? `<div class="tooltip-detail">${detail}</div>` : ""}
-    `;
-    tooltip.style.display = "block";
-  });
+      let trendIcon = "⚪";
+      if (trend === "up") trendIcon = "🟢 ▲";
+      if (trend === "down") trendIcon = "🔴 ▼";
+      if (trend === "flat") trendIcon = "🟡 ▬";
 
-  chartContainer.addEventListener("mousemove", (e) => {
-    if (tooltip.style.display === "block") {
-      tooltip.style.left = `${e.clientX + 15}px`;
-      tooltip.style.top = `${e.clientY + 15}px`;
-    }
-  });
+      tooltip.innerHTML = `
+        <div class="tooltip-title">${title}</div>
+        <div class="tooltip-value">${val} <span class="tooltip-trend">${trendIcon}</span></div>
+        ${detail ? `<div class="tooltip-detail">${detail}</div>` : ""}
+      `;
+      tooltip.style.display = "block";
+    });
 
-  chartContainer.addEventListener("mouseout", (e) => {
-    const target = e.target.closest("[data-tooltip-title]");
-    if (target) {
-      tooltip.style.display = "none";
-    }
+    container.addEventListener("mousemove", (e) => {
+      if (tooltip.style.display === "block") {
+        tooltip.style.left = `${e.clientX + 15}px`;
+        tooltip.style.top = `${e.clientY + 15}px`;
+      }
+    });
+
+    container.addEventListener("mouseout", (e) => {
+      const target = e.target.closest("[data-tooltip-title]");
+      if (target) {
+        tooltip.style.display = "none";
+      }
+    });
   });
 
   chartTooltipInitialized = true;
@@ -1324,6 +1444,1146 @@ function ensureMonthlyProductivityTrend(rawPayload) {
     .finally(() => {
       isMonthlyTrendFallbackLoading = false;
     });
+}
+
+function getMonthlyAggregates() {
+  if (!dailyIndexPayload || !dailyIndexPayload.dates) {
+    return [];
+  }
+
+  const dateKeys = dailyIndexPayload.dateKeys || Object.keys(dailyIndexPayload.dates).sort();
+  const monthsData = {};
+
+  dateKeys.forEach((dateKey) => {
+    const dateData = dailyIndexPayload.dates[dateKey];
+    if (!dateData || !dateData.overall) return;
+
+    const match = dateKey.match(/^(\d{4})-(\d{2})/);
+    if (!match) return;
+
+    const monthKey = match[0]; // e.g. "2026-06"
+    if (!monthsData[monthKey]) {
+      monthsData[monthKey] = {
+        monthKey,
+        sum: 0,
+        count: 0,
+        totalPick: 0,
+        activeDays: 0,
+        transactions: 0,
+        affiliations: {}
+      };
+    }
+
+    const overall = dateData.overall;
+    if (overall.count > 0) {
+      monthsData[monthKey].sum += overall.sum || 0;
+      monthsData[monthKey].count += overall.count || 0;
+      monthsData[monthKey].totalPick += dateData.totalPick || 0;
+      monthsData[monthKey].activeDays += 1;
+      monthsData[monthKey].transactions += overall.count || 0;
+    }
+
+    const rawShifts = dateData.shifts || {};
+    if (Array.isArray(rawShifts)) {
+      rawShifts.forEach((shift) => {
+        const affiliations = Array.isArray(shift.affiliations) ? shift.affiliations : Object.values(shift.affiliations || {});
+        affiliations.forEach((aff) => {
+          const name = aff.title || aff.label || aff.name || "ไม่ระบุสังกัด";
+          if (!monthsData[monthKey].affiliations[name]) {
+            monthsData[monthKey].affiliations[name] = { sum: 0, count: 0 };
+          }
+          const count = Number(aff.count || 0);
+          const avg = Number(aff.average || 0);
+          monthsData[monthKey].affiliations[name].sum += (aff.sum !== undefined ? aff.sum : avg * count);
+          monthsData[monthKey].affiliations[name].count += count;
+        });
+      });
+    } else {
+      Object.keys(rawShifts).forEach((shiftName) => {
+        const shift = rawShifts[shiftName] || {};
+        const affiliationsObj = shift.affiliations || {};
+        Object.keys(affiliationsObj).forEach((affName) => {
+          const bucket = affiliationsObj[affName] || {};
+          if (bucket.count > 0) {
+            const name = affName || "ไม่ระบุสังกัด";
+            if (!monthsData[monthKey].affiliations[name]) {
+              monthsData[monthKey].affiliations[name] = { sum: 0, count: 0 };
+            }
+            monthsData[monthKey].affiliations[name].sum += bucket.sum || 0;
+            monthsData[monthKey].affiliations[name].count += bucket.count || 0;
+          }
+        });
+      });
+    }
+  });
+
+  return Object.keys(monthsData)
+    .sort()
+    .map((monthKey) => {
+      const data = monthsData[monthKey];
+      const average = data.count > 0 ? data.sum / data.count : 0;
+      const [year, monthNum] = monthKey.split("-");
+      const monthIndex = parseInt(monthNum, 10) - 1;
+
+      const thaiMonthNames = [
+        "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+        "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
+      ];
+      const thaiShortMonthNames = [
+        "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.",
+        "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."
+      ];
+      const engMonthNames = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+      ];
+
+      const affList = Object.keys(data.affiliations || {}).map((name) => {
+        const a = data.affiliations[name];
+        const avg = a.count > 0 ? a.sum / a.count : 0;
+        return {
+          name,
+          average: round1(avg),
+          rawAverage: avg,
+          count: a.count
+        };
+      }).sort((left, right) => left.name.localeCompare(right.name, "th"));
+
+      return {
+        monthKey,
+        year: parseInt(year, 10),
+        monthIndex,
+        average: round1(average),
+        rawAverage: average,
+        totalPick: Math.round(data.totalPick),
+        activeDays: data.activeDays,
+        transactions: data.transactions,
+        labelThai: `${thaiMonthNames[monthIndex]} ${parseInt(year, 10) + 543}`,
+        labelThaiShort: `${thaiShortMonthNames[monthIndex]} ${String(parseInt(year, 10) + 543).slice(2)}`,
+        labelEngShort: engMonthNames[monthIndex],
+        affiliations: affList
+      };
+    });
+}
+
+const AFFILIATION_COLORS = [
+  { stroke: "#1A6CF6", gradStart: "#1A6CF6", name: "blue" },
+  { stroke: "#00C2A0", gradStart: "#00C2A0", name: "teal" },
+  { stroke: "#A855F7", gradStart: "#A855F7", name: "purple" },
+  { stroke: "#F59E0B", gradStart: "#F59E0B", name: "yellow" },
+  { stroke: "#EF4444", gradStart: "#EF4444", name: "red" },
+  { stroke: "#EC4899", gradStart: "#EC4899", name: "pink" }
+];
+
+function buildYearlyProductivitySvg(monthsData, metricLabel) {
+  if (monthsData.length === 0) {
+    return `<div class="monthly-productivity-empty">ยังไม่มีข้อมูล Productivity รายเดือน</div>`;
+  }
+
+  const width = 1040;
+  const height = 330;
+  const pad = { top: 24, right: 58, bottom: 58, left: 62 };
+  const plotWidth = width - pad.left - pad.right;
+  const plotHeight = height - pad.top - pad.bottom;
+  
+  const values = [];
+  const distinctAffiliations = [];
+  monthsData.forEach((d) => {
+    values.push(d.average);
+    (d.affiliations || []).forEach((aff) => {
+      values.push(aff.average);
+      if (!distinctAffiliations.includes(aff.name)) {
+        distinctAffiliations.push(aff.name);
+      }
+    });
+  });
+  distinctAffiliations.sort((left, right) => left.localeCompare(right, "th"));
+  
+  const maxValue = Math.max(...values, TARGETS.overall, 1);
+  const scaleMax = Math.ceil((maxValue * 1.12) / 10) * 10;
+  
+  const step = monthsData.length > 1 ? plotWidth / (monthsData.length - 1) : plotWidth;
+  const yOf = (value) => pad.top + plotHeight - ((Number(value || 0) / scaleMax) * plotHeight);
+  
+  const points = monthsData.map((d, index) => ({
+    d,
+    x: pad.left + (index * step),
+    y: yOf(d.average),
+  }));
+  
+  const path = points.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
+  const targetY = yOf(TARGETS.overall);
+
+  // Closed path for area fill under the line
+  let areaPath = "";
+  if (points.length > 0) {
+    const firstPoint = points[0];
+    const lastPoint = points[points.length - 1];
+    const yBottom = pad.top + plotHeight;
+    areaPath = `M ${firstPoint.x} ${yBottom} L ${firstPoint.x} ${firstPoint.y} ${points.slice(1).map(p => `L ${p.x} ${p.y}`).join(" ")} L ${lastPoint.x} ${yBottom} Z`;
+  }
+
+  const grid = [0, 0.5, 1].map((ratio) => {
+    const value = scaleMax * ratio;
+    const y = yOf(value);
+    return `
+      <line class="monthly-chart-grid" x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" stroke="var(--border-subtle)"></line>
+      <text class="monthly-chart-axis" x="${pad.left - 10}" y="${y + 4}" text-anchor="end" fill="var(--text-muted)" style="font-family: var(--font-mono); font-size: 11px;">${escapeHtml(formatProductivityValue(value))}</text>
+    `;
+  }).join("");
+
+  let bars = "";
+  const m = distinctAffiliations.length;
+  
+  const monthlyTooltips = monthsData.map((d) => {
+    const isOverallGood = d.average >= TARGETS.overall;
+    const overallValStr = `${formatProductivityValue(d.average)} ${metricLabel}`;
+    const overallTrend = isOverallGood ? "up" : "down";
+    
+    const affLines = distinctAffiliations.map((affName, k) => {
+      const colorObj = AFFILIATION_COLORS[k % AFFILIATION_COLORS.length];
+      const aff = (d.affiliations || []).find(a => a.name === affName);
+      const affAvg = aff && aff.count > 0 ? aff.average : 0;
+      const countVal = aff && aff.count > 0 ? aff.count : 0;
+      
+      if (countVal === 0) return "";
+      
+      return `
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:1.2rem; font-size:0.72rem; line-height:1.45; color:rgba(255,255,255,0.85); margin-bottom: 0.15rem;">
+          <div style="display:flex; align-items:center; gap:0.35rem;">
+            <span style="width:7px; height:7px; border-radius:1px; background:${colorObj.stroke}; display:inline-block;"></span>
+            <span>${escapeHtml(affName)}</span>
+          </div>
+          <strong>${formatProductivityValue(affAvg)} Pick/Hr</strong>
+        </div>
+      `;
+    }).filter(line => line !== "").join("");
+
+    const detailHtml = affLines ? `
+      <div style="margin-top:0.45rem; border-top:1px solid rgba(255,255,255,0.18); padding-top:0.45rem; min-width: 170px;">
+        <div style="font-size:0.68rem; text-transform:uppercase; color:rgba(255,255,255,0.5); font-weight:700; margin-bottom:0.30rem; letter-spacing:0.02em;">แยกตามสังกัด (Breakdown)</div>
+        ${affLines}
+      </div>
+    ` : "";
+
+    return {
+      title: d.labelThai,
+      value: overallValStr,
+      detail: detailHtml,
+      trend: overallTrend
+    };
+  });
+
+  if (m > 0) {
+    const groupBars = [];
+    monthsData.forEach((d, index) => {
+      const groupWidth = Math.min(65, step * 0.75);
+      const subBarWidth = groupWidth / m;
+      const groupStartX = pad.left + (index * step) - (groupWidth / 2);
+      const tooltip = monthlyTooltips[index];
+
+      distinctAffiliations.forEach((affName, k) => {
+        const aff = (d.affiliations || []).find(a => a.name === affName);
+        if (!aff || aff.count === 0) return;
+
+        const x = groupStartX + (k * subBarWidth);
+        const y = yOf(aff.average);
+        const barHeight = Math.max(2, plotHeight - (y - pad.top));
+        const colorObj = AFFILIATION_COLORS[k % AFFILIATION_COLORS.length];
+
+        groupBars.push(`
+          <g class="monthly-chart-dot-group" style="cursor: pointer;"
+             data-tooltip-title="${escapeHtml(tooltip.title)}"
+             data-tooltip-value="${escapeHtml(tooltip.value)}"
+             data-tooltip-detail="${escapeHtml(tooltip.detail)}"
+             data-tooltip-trend="${escapeHtml(tooltip.trend)}">
+            <rect class="monthly-chart-bar" x="${x}" y="${y}" width="${subBarWidth - 1}" height="${barHeight}" style="fill: url(#affCompGradYearly_${k}); opacity: 0.90;" rx="2" ry="2" />
+            <rect x="${x}" y="${y}" width="${subBarWidth - 1}" height="${Math.min(2, barHeight)}" fill="${colorObj.stroke}" style="opacity: 0.95;" />
+          </g>
+        `);
+      });
+    });
+    bars = groupBars.join("");
+  } else {
+    const barWidth = Math.max(16, Math.min(48, (plotWidth / Math.max(monthsData.length, 1)) * 0.4));
+    bars = monthsData.map((d, index) => {
+      const x = pad.left + (index * step);
+      const barHeight = Math.max(2, pad.top + plotHeight - yOf(d.average));
+      const y = pad.top + plotHeight - barHeight;
+      const tooltip = monthlyTooltips[index];
+
+      return `
+        <rect class="monthly-chart-bar" 
+              x="${x - (barWidth / 2)}" y="${y}" width="${barWidth}" height="${barHeight}" rx="4"
+              style="fill: url(#barGoodGradYearly); opacity: 0.75; transition: all 0.2s;"
+              data-tooltip-title="${escapeHtml(tooltip.title)}"
+              data-tooltip-value="${escapeHtml(tooltip.value)}"
+              data-tooltip-detail="${escapeHtml(tooltip.detail)}"
+              data-tooltip-trend="${escapeHtml(tooltip.trend)}">
+        </rect>
+      `;
+    }).join("");
+  }
+
+  const dots = points.map((point, index) => {
+    const d = point.d;
+    const tooltip = monthlyTooltips[index];
+    const isGood = d.average >= TARGETS.overall;
+    const color = isGood ? "var(--good)" : "var(--warn)";
+
+    return `
+      <g class="monthly-chart-dot-group" style="cursor: pointer;"
+         data-tooltip-title="${escapeHtml(tooltip.title)}"
+         data-tooltip-value="${escapeHtml(tooltip.value)}"
+         data-tooltip-detail="${escapeHtml(tooltip.detail)}"
+         data-tooltip-trend="${escapeHtml(tooltip.trend)}">
+        <circle cx="${point.x}" cy="${point.y}" r="8" fill="var(--bg-surface)" stroke="${color}" stroke-width="2.5" />
+        <circle cx="${point.x}" cy="${point.y}" r="3.5" fill="${color}" />
+      </g>
+    `;
+  }).join("");
+
+  const labelTexts = points.map((point) => {
+    const val = formatProductivityValue(point.d.average);
+    return `
+      <text class="monthly-chart-value-label" x="${point.x}" y="${point.y - 15}" text-anchor="middle" fill="var(--text-primary)" style="font-family: var(--font-body); font-weight: 700; font-size: 11px; filter: drop-shadow(0px 1px 2px rgba(0,0,0,0.55));">${val}</text>
+    `;
+  }).join("");
+
+  const labels = monthsData.map((d, index) => {
+    const x = pad.left + (index * step);
+    return `<text class="monthly-chart-date" x="${x}" y="${height - 24}" text-anchor="middle" fill="var(--text-secondary)" style="font-family: var(--font-body); font-size: 11px;">${escapeHtml(d.labelEngShort)}</text>`;
+  }).join("");
+
+  const dynamicGradients = distinctAffiliations.map((affName, k) => {
+    const colorObj = AFFILIATION_COLORS[k % AFFILIATION_COLORS.length];
+    return `
+      <linearGradient id="affCompGradYearly_${k}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${colorObj.gradStart}" stop-opacity="0.95"/>
+        <stop offset="100%" stop-color="${colorObj.gradStart}" stop-opacity="0.55"/>
+      </linearGradient>
+    `;
+  }).join("");
+
+  const svgString = `
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="กราฟ Productivity รายเดือน">
+      <defs>
+        <!-- Area gradient under the line -->
+        <linearGradient id="areaGradientYearly" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--blue)" stop-opacity="0.25"/>
+          <stop offset="100%" stop-color="var(--blue)" stop-opacity="0.00"/>
+        </linearGradient>
+        
+        <!-- Bar gradients -->
+        <linearGradient id="barGoodGradYearly" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--good)" stop-opacity="0.85"/>
+          <stop offset="100%" stop-color="var(--good)" stop-opacity="0.15"/>
+        </linearGradient>
+        <linearGradient id="barWarnGradYearly" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--warn)" stop-opacity="0.85"/>
+          <stop offset="100%" stop-color="var(--warn)" stop-opacity="0.15"/>
+        </linearGradient>
+        <linearGradient id="barDefaultGradYearly" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--blue)" stop-opacity="0.85"/>
+          <stop offset="100%" stop-color="var(--blue)" stop-opacity="0.15"/>
+        </linearGradient>
+        
+        ${dynamicGradients}
+
+        <!-- Drop shadow for the trend line -->
+        <filter id="lineShadowYearly" x="-10%" y="-10%" width="120%" height="120%">
+          <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#000" flood-opacity="0.3"/>
+        </filter>
+      </defs>
+
+      ${grid}
+      
+      <!-- Target Reference Line -->
+      <line class="monthly-chart-target" x1="${pad.left}" y1="${targetY}" x2="${width - pad.right}" y2="${targetY}" stroke="var(--warn)" stroke-width="2" stroke-dasharray="6 6" style="opacity: 0.85;"></line>
+      <text class="monthly-chart-target-label" x="${width - pad.right}" y="${targetY - 8}" text-anchor="end" fill="var(--warn)" style="font-family: var(--font-body); font-weight: 700; font-size: 11px;">Target ${TARGETS.overall}</text>
+      
+      <!-- Gradient Bars -->
+      ${bars}
+      
+      <!-- Line Area Fill -->
+      ${areaPath ? `<path d="${areaPath}" fill="url(#areaGradientYearly)" style="pointer-events: none;"></path>` : ""}
+      
+      <!-- Glowing Line Path -->
+      <path class="monthly-chart-line" d="${path}" stroke="var(--blue)" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#lineShadowYearly)"></path>
+      
+      <!-- Value Labels Above Dots -->
+      ${labelTexts}
+      
+      <!-- Floating Rings Dots -->
+      ${dots}
+      
+      <!-- X-axis Labels -->
+      ${labels}
+      
+      <!-- Y-axis Label -->
+      <text class="monthly-chart-title" x="${pad.left}" y="${height - 8}" fill="var(--text-muted)" style="font-family: var(--font-body); font-size: 11px;">${escapeHtml(metricLabel)} / เดือน (Months)</text>
+    </svg>
+  `;
+
+  const legendHtml = distinctAffiliations.map((affName, k) => {
+    const colorObj = AFFILIATION_COLORS[k % AFFILIATION_COLORS.length];
+    return `
+      <div style="display:flex; align-items:center; gap:0.35rem; font-size:0.75rem; color:var(--text-secondary);">
+        <span style="width:10px; height:10px; border-radius:2px; background:${colorObj.stroke}; display:inline-block;"></span>
+        <strong>${escapeHtml(affName)}</strong>
+      </div>
+    `;
+  }).join("");
+
+  const legendContainer = legendHtml ? `
+    <div class="monthly-chart-legend" style="display:flex; justify-content:center; gap:1.5rem; flex-wrap:wrap; margin-top:0.75rem; padding-bottom:0.25rem;">
+      <div style="display:flex; align-items:center; gap:0.35rem; font-size:0.75rem; color:var(--text-secondary); margin-right: 0.5rem;">
+        <span style="width:12px; height:2px; background:var(--blue); display:inline-block;"></span>
+        <strong>เฉลี่ยรวมรายเดือน (Overall Avg Trend)</strong>
+      </div>
+      ${legendHtml}
+    </div>
+  ` : "";
+
+  return svgString + legendContainer;
+}
+
+function renderMonthlyTab(payload) {
+  const kpiRow = document.querySelector("#monthlyKpiRow");
+  const chartSummary = document.querySelector("#monthlyChartSummary");
+  const chartContainer = document.querySelector("#monthlyChartContainer");
+  const tableBody = document.querySelector("#monthlyTableBody");
+  
+  if (!kpiRow || !chartContainer || !tableBody) {
+    return;
+  }
+
+  const monthsData = getMonthlyAggregates();
+
+  if (monthsData.length === 0) {
+    kpiRow.innerHTML = `
+      <article class="kpi-main is-empty" style="grid-column: 1 / -1; min-height: 120px; display: flex; align-items: center; justify-content: center;">
+        <span style="color: var(--text-muted);">ไม่มีข้อมูลสำหรับสรุปรายเดือน</span>
+      </article>
+    `;
+    chartContainer.innerHTML = `<div class="monthly-productivity-empty">ไม่มีข้อมูลสำหรับแสดงกราฟรายเดือน</div>`;
+    tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">ไม่มีข้อมูลสำหรับสรุปรายเดือน</td></tr>`;
+    return;
+  }
+
+  const totalSum = monthsData.reduce((sum, d) => sum + (d.rawAverage * d.transactions), 0);
+  const totalTransactions = monthsData.reduce((sum, d) => sum + d.transactions, 0);
+  const ytdAverage = totalTransactions > 0 ? totalSum / totalTransactions : 0;
+  const ytdInfo = getStatusInfo(ytdAverage, TARGETS.overall);
+
+  const bestMonth = [...monthsData].sort((a, b) => b.average - a.average)[0];
+  const ytdTotalPick = monthsData.reduce((sum, d) => sum + d.totalPick, 0);
+
+  kpiRow.innerHTML = `
+    <article class="kpi-main ${ytdInfo.className}" id="monthlyYtdCard">
+      <div class="kpi-main-head">
+        <span class="kpi-main-label">YTD Avg Pick/Hr</span>
+        <span class="kpi-badge">${ytdInfo.label}</span>
+      </div>
+      <div class="kpi-main-number" id="monthlyYtdAvg">${formatNumber(ytdAverage)}</div>
+      <div class="kpi-main-sub">
+        <span>Target ≥ ${TARGETS.overall}</span>
+        <span>${getSimpleTargetDirection(ytdAverage, TARGETS.overall)}</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" style="width: ${Math.min(ytdInfo.progress, 100)}%"></div>
+      </div>
+    </article>
+
+    <article class="kpi-stat kpi-stat-total">
+      <div class="kpi-stat-icon">★</div>
+      <div class="kpi-stat-body">
+        <div class="kpi-stat-label">เดือนที่ดีที่สุด (Best Month)</div>
+        <div class="kpi-stat-value" style="font-size: 1.5rem; margin-top: 0.5rem; color: var(--good);">${bestMonth ? bestMonth.labelThai : "-"}</div>
+        <div class="kpi-stat-note">Avg Pick/Hr: <strong>${bestMonth ? formatProductivityValue(bestMonth.average) : "-"}</strong></div>
+      </div>
+    </article>
+
+    <article class="kpi-stat kpi-stat-pick-to-sort">
+      <div class="kpi-stat-icon">Σ</div>
+      <div class="kpi-stat-body">
+        <div class="kpi-stat-label">ยอดหยิบรวมทั้งหมด (YTD Total Pick)</div>
+        <div class="kpi-stat-value" id="monthlyYtdTotal">${formatInteger(ytdTotalPick)}</div>
+        <div class="kpi-stat-note">รวมทั้งหมดในฐานข้อมูล</div>
+      </div>
+    </article>
+  `;
+
+  if (chartSummary) {
+    const summaryItems = [
+      { label: "เฉลี่ย YTD", value: formatProductivityValue(ytdAverage) },
+      { label: "เดือนดีสุด", value: bestMonth ? `${bestMonth.labelThaiShort} (${formatProductivityValue(bestMonth.average)})` : "-" },
+      { label: "ยอดรวม YTD", value: formatInteger(ytdTotalPick) },
+      { label: "เดือนทั้งหมด", value: `${monthsData.length} เดือน` },
+    ];
+    chartSummary.innerHTML = summaryItems.map((item) => `
+      <div class="monthly-summary-chip">
+        <span>${escapeHtml(item.label)}</span>
+        <strong>${escapeHtml(item.value)}</strong>
+      </div>
+    `).join("");
+  }
+
+  chartContainer.innerHTML = buildYearlyProductivitySvg(monthsData, "Avg Pick/Hr");
+  setupChartTooltips();
+
+  // MONTHLY PRESENTATION / EXECUTIVE BRIEFING GENERATION
+  const monthlyPresentBriefing = document.querySelector("#monthlyPresentBriefing");
+  const monthlyPresentPeriodLabel = document.querySelector("#monthlyPresentPeriodLabel");
+  const monthlyPresentHeadline = document.querySelector("#monthlyPresentHeadline");
+  const monthlyPresentNarrative = document.querySelector("#monthlyPresentNarrative");
+  const monthlyPresentHighlights = document.querySelector("#monthlyPresentHighlights");
+  const monthlyPresentRisks = document.querySelector("#monthlyPresentRisks");
+  const monthlyPresentActions = document.querySelector("#monthlyPresentActions");
+
+  if (monthlyPresentBriefing && monthsData.length > 0) {
+    monthlyPresentBriefing.style.display = "block";
+    
+    const startMonth = monthsData[0].labelThaiShort;
+    const endMonth = monthsData[monthsData.length - 1].labelThaiShort;
+    if (monthlyPresentPeriodLabel) {
+      monthlyPresentPeriodLabel.textContent = `${startMonth} - ${endMonth}`;
+    }
+
+    const sortedByAvg = [...monthsData].sort((a, b) => b.average - a.average);
+    const bestMonthObj = sortedByAvg[0];
+    const worstMonthObj = sortedByAvg[sortedByAvg.length - 1];
+    
+    const latestMonth = monthsData[monthsData.length - 1];
+    const isLatestAboveTarget = latestMonth.average >= TARGETS.overall;
+    
+    if (monthlyPresentHeadline) {
+      monthlyPresentHeadline.textContent = isLatestAboveTarget
+        ? `สรุปแนวโน้มรายเดือน: เดือนล่าสุด (${latestMonth.labelThaiShort}) ผลงานเฉลี่ยบรรลุเป้าหมายองค์กร`
+        : `สรุปแนวโน้มรายเดือน: เดือนล่าสุด (${latestMonth.labelThaiShort}) ผลผลิตเฉลี่ยยังคงต่ำกว่าเกณฑ์เป้าหมายกลาง`;
+    }
+
+    let MoM_Sentence = "ยังไม่มีข้อมูลเปรียบเทียบเดือนก่อนหน้า";
+    const highlights = [];
+    const risks = [];
+    const actions = [];
+
+    highlights.push(`<strong>จุดเด่นภาพรวม</strong>: เดือน <strong>${bestMonthObj.labelThai}</strong> มีผลผลิตเฉลี่ยสูงสุดแตะ <strong>${formatProductivityValue(bestMonthObj.average)} Pick/Hr</strong> จากยอดหยิบรวม ${formatInteger(bestMonthObj.totalPick)} รายการ`);
+    risks.push(`<strong>จุดที่ต้องกู้คืน</strong>: เดือน <strong>${worstMonthObj.labelThai}</strong> ตกต่ำสุดเฉลี่ยที่ <strong>${formatProductivityValue(worstMonthObj.average)} Pick/Hr</strong> ต่ำกว่าเป้าภาพรวมอยู่ ${formatProductivityValue(TARGETS.overall - worstMonthObj.average)} Pick/Hr`);
+
+    if (monthsData.length >= 2) {
+      const prevMonth = monthsData[monthsData.length - 2];
+      const delta = latestMonth.average - prevMonth.average;
+      const trendDirection = delta > 0 ? "เพิ่มขึ้น" : "ลดลง";
+      const trendPct = prevMonth.average > 0 ? (delta / prevMonth.average) * 100 : 0;
+      
+      MoM_Sentence = `เทียบกับเดือนก่อนหน้า (${prevMonth.labelThaiShort}) มีอัตราการเปลี่ยนแปลงผลผลิตเฉลี่ย ${trendDirection} <strong>${formatProductivityValue(Math.abs(trendPct))}%</strong> (${delta > 0 ? "▲ +" : "▼ "}${formatProductivityValue(delta)} Pick/Hr)`;
+
+      const latestAffList = latestMonth.affiliations || [];
+      const prevAffList = prevMonth.affiliations || [];
+      const affDeltas = [];
+
+      latestAffList.forEach((la) => {
+        const pa = prevAffList.find(p => p.name === la.name);
+        if (pa && pa.count > 0 && la.count > 0) {
+          const affDelta = la.average - pa.average;
+          const affPct = pa.average > 0 ? (affDelta / pa.average) * 100 : 0;
+          affDeltas.push({ name: la.name, delta: affDelta, pct: affPct });
+        }
+      });
+
+      if (affDeltas.length > 0) {
+        const sortedAffs = [...affDeltas].sort((a, b) => b.delta - a.delta);
+        const bestAff = sortedAffs[0];
+        const worstAff = sortedAffs[sortedAffs.length - 1];
+
+        if (bestAff && bestAff.delta > 0) {
+          highlights.push(`<strong>สังกัดพัฒนาการดีเด่น</strong>: สังกัด <strong>${bestAff.name}</strong> เติบโตดีที่สุดรายเดือน เพิ่มขึ้น <strong>+${formatProductivityValue(bestAff.delta)} Pick/Hr</strong> (+${formatProductivityValue(bestAff.pct)}%)`);
+        }
+        if (worstAff && worstAff.delta < 0) {
+          risks.push(`<strong>สังกัดดิ่งลงรายเดือน</strong>: สังกัด <strong>${worstAff.name}</strong> ชะลอตัวลงมากที่สุด ลดลง <strong>${formatProductivityValue(worstAff.delta)} Pick/Hr</strong> (${formatProductivityValue(worstAff.pct)}%)`);
+          actions.push(`<strong>ทบทวนสังกัด ${worstAff.name} รายกะ</strong>: ตรวจสอบและพูดคุยปัญหาการทำงานร่วมกับสังกัด <strong>${worstAff.name}</strong> เพื่อหาสาเหตุที่แนวโน้มประสิทธิภาพตกลงเร่งด่วน`);
+        }
+      }
+    }
+
+    if (monthlyPresentNarrative) {
+      monthlyPresentNarrative.innerHTML = `รายงานสรุปผลงานระดับผู้บริหาร (Monthly Briefing) ในรอบช่วงเวลา <strong>${startMonth} - ${endMonth}</strong> มีผลผลิตเฉลี่ยสะสมรวม (YTD Avg) อยู่ที่ <strong>${formatProductivityValue(ytdAverage)} Pick/Hr</strong> (ต่ำกว่าเกณฑ์เป้าหมาย 170 อยู่ ${formatProductivityValue(TARGETS.overall - ytdAverage)} Pick/Hr). ${MoM_Sentence}. ข้อมูลชี้แนะจุดสำคัญที่ต้องวิเคราะห์ต่อดังนี้:`;
+    }
+
+    actions.push(`<strong>ถอดบทเรียนช่วงพีคสูงสุด</strong>: นำรูปแบบการจัดการกะ และ Best Practice ของเดือน <strong>${bestMonthObj.labelThaiShort}</strong> มาใช้อ้างอิงเป็นมาตรฐานคลังและใช้อบรมพนักงานกลุ่มเป้าหมาย`);
+    actions.push(`<strong>เฝ้าระวังกำลังพลเดือนต่ำสุด</strong>: เปรียบเทียบจำนวนวันทำงานและอัตราการจัดสรรกำลังพลในช่วงเดือน <strong>${worstMonthObj.labelThaiShort}</strong> เพื่อป้องกันสภาวะกำลังพลไม่สมดุลกับยอดสั่งซื้อในอนาคต`);
+
+    if (monthlyPresentHighlights) {
+      monthlyPresentHighlights.innerHTML = highlights.map(item => `<li style="margin-bottom: 0.5rem;">${item}</li>`).join("");
+    }
+    if (monthlyPresentRisks) {
+      monthlyPresentRisks.innerHTML = risks.map(item => `<li style="margin-bottom: 0.5rem;">${item}</li>`).join("");
+    }
+    if (monthlyPresentActions) {
+      monthlyPresentActions.innerHTML = actions.map(item => `<li style="margin-bottom: 0.5rem;">${item}</li>`).join("");
+    }
+  } else if (monthlyPresentBriefing) {
+    monthlyPresentBriefing.style.display = "none";
+  }
+
+  tableBody.innerHTML = monthsData.map((d) => {
+    const diff = d.average - TARGETS.overall;
+    const diffClass = diff >= 0 ? "is-good" : "is-warning";
+    const diffText = diff >= 0 ? `+${formatProductivityValue(diff)}` : `${formatProductivityValue(diff)}`;
+    
+    return `
+      <tr>
+        <td style="font-weight: 600; color: var(--text-primary);">${escapeHtml(d.labelThai)}</td>
+        <td style="font-family: var(--font-mono); font-weight: 600;">${formatProductivityValue(d.average)}</td>
+        <td class="${diffClass}" style="font-weight: 700;">${diffText}</td>
+        <td style="font-family: var(--font-mono);">${formatInteger(d.totalPick)}</td>
+        <td>${formatInteger(d.activeDays)} วัน</td>
+        <td style="font-family: var(--font-mono);">${formatInteger(d.transactions)}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function getAffiliationMonthlyData(affiliationName, overallTrendData) {
+  const dateKeys = Array.isArray(dailyIndexPayload?.dateKeys) ? dailyIndexPayload.dateKeys : [];
+  const monthly = {};
+
+  overallTrendData.forEach((m) => {
+    monthly[m.monthKey] = {
+      monthKey: m.monthKey,
+      totalSum: 0,
+      totalCount: 0,
+      labelEngShort: m.labelEngShort,
+      labelThaiShort: m.labelThaiShort
+    };
+  });
+
+  dateKeys.forEach((dateKey) => {
+    const day = dailyIndexPayload.dates?.[dateKey] || {};
+    if (!day.hasData) return;
+
+    const monthKey = dateKey.slice(0, 7);
+    if (!monthly[monthKey]) return;
+
+    const shifts = Array.isArray(day.shifts) ? day.shifts : Object.values(day.shifts || {});
+    shifts.forEach((shift) => {
+      const affiliations = Array.isArray(shift.affiliations) ? shift.affiliations : Object.values(shift.affiliations || {});
+      affiliations.forEach((aff) => {
+        const name = aff.title || aff.label || "ไม่ระบุสังกัด";
+        if (name === affiliationName) {
+          const count = Number(aff.count || 0);
+          const avg = Number(aff.average || 0);
+          monthly[monthKey].totalSum += avg * count;
+          monthly[monthKey].totalCount += count;
+        }
+      });
+    });
+  });
+
+  return Object.values(monthly)
+    .map((m) => {
+      const average = m.totalCount > 0 ? m.totalSum / m.totalCount : 0;
+      return {
+        monthKey: m.monthKey,
+        average: round1(average),
+        rawAverage: average,
+        activeDays: m.totalCount,
+        labelEngShort: m.labelEngShort,
+        labelThaiShort: m.labelThaiShort
+      };
+    })
+    .filter((m) => m.activeDays > 0);
+}
+
+function buildAffiliationTrendSvg(trendData, overallTrendData, metricLabel) {
+  if (trendData.length === 0) {
+    return `<div class="monthly-productivity-empty">ยังไม่มีข้อมูลแนวโน้มของสังกัดนี้</div>`;
+  }
+
+  const width = 640;
+  const height = 230;
+  const pad = { top: 20, right: 20, bottom: 42, left: 52 };
+  const plotWidth = width - pad.left - pad.right;
+  const plotHeight = height - pad.top - pad.bottom;
+
+  const allValues = [
+    ...trendData.map(d => d.average),
+    ...overallTrendData.map(d => d.average),
+    TARGETS.overall
+  ];
+  const maxValue = Math.max(...allValues, 1);
+  const scaleMax = Math.ceil((maxValue * 1.12) / 10) * 10;
+  const yOf = (value) => pad.top + plotHeight - ((Number(value || 0) / scaleMax) * plotHeight);
+
+  const months = overallTrendData.map(d => d.monthKey);
+  const step = months.length > 1 ? plotWidth / (months.length - 1) : plotWidth;
+
+  const getPoints = (data) => {
+    return data.map(d => {
+      const idx = months.indexOf(d.monthKey);
+      if (idx === -1) return null;
+      return {
+        d,
+        x: pad.left + (idx * step),
+        y: yOf(d.average)
+      };
+    }).filter(p => p !== null);
+  };
+
+  const affPoints = getPoints(trendData);
+  const overallPoints = getPoints(overallTrendData);
+
+  const affPath = affPoints.map((p, idx) => `${idx ? "L" : "M"} ${p.x} ${p.y}`).join(" ");
+  const overallPath = overallPoints.map((p, idx) => `${idx ? "L" : "M"} ${p.x} ${p.y}`).join(" ");
+  const targetY = yOf(TARGETS.overall);
+
+  let areaPath = "";
+  if (affPoints.length > 0) {
+    const firstPoint = affPoints[0];
+    const lastPoint = affPoints[affPoints.length - 1];
+    const yBottom = pad.top + plotHeight;
+    areaPath = `M ${firstPoint.x} ${yBottom} L ${firstPoint.x} ${firstPoint.y} ${affPoints.slice(1).map(p => `L ${p.x} ${p.y}`).join(" ")} L ${lastPoint.x} ${yBottom} Z`;
+  }
+
+  const grid = [0, 0.5, 1].map((ratio) => {
+    const value = scaleMax * ratio;
+    const y = yOf(value);
+    return `
+      <line class="monthly-chart-grid" x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" stroke="var(--border-subtle)"></line>
+      <text class="monthly-chart-axis" x="${pad.left - 8}" y="${y + 4}" text-anchor="end" fill="var(--text-muted)" style="font-family: var(--font-mono); font-size: 10px;">${escapeHtml(formatProductivityValue(value))}</text>
+    `;
+  }).join("");
+
+  const dots = affPoints.map((point) => {
+    const d = point.d;
+    const isGood = d.average >= TARGETS.overall;
+    const color = isGood ? "var(--good)" : "var(--warn)";
+    const detailText = `Productivity เฉลี่ย: ${formatProductivityValue(d.average)} · ${formatInteger(d.activeDays)} รายการ`;
+
+    return `
+      <g class="monthly-chart-dot-group" style="cursor: pointer;"
+         data-tooltip-title="${escapeHtml(d.labelThaiShort)}"
+         data-tooltip-value="${escapeHtml(formatProductivityValue(d.average) + ' ' + metricLabel)}"
+         data-tooltip-detail="${escapeHtml(detailText)}"
+         data-tooltip-trend="${isGood ? 'up' : 'down'}">
+        <circle cx="${point.x}" cy="${point.y}" r="6" fill="var(--bg-surface)" stroke="${color}" stroke-width="2" />
+        <circle cx="${point.x}" cy="${point.y}" r="2.5" fill="${color}" />
+      </g>
+    `;
+  }).join("");
+
+  const labels = overallTrendData.map((d, index) => {
+    const x = pad.left + (index * step);
+    return `<text class="monthly-chart-date" x="${x}" y="${height - 14}" text-anchor="middle" fill="var(--text-secondary)" style="font-family: var(--font-body); font-size: 10px;">${escapeHtml(d.labelEngShort)}</text>`;
+  }).join("");
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" style="display:block; width:100%; height:auto;">
+      <defs>
+        <linearGradient id="areaGradientAff" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--blue)" stop-opacity="0.18"/>
+          <stop offset="100%" stop-color="var(--blue)" stop-opacity="0.0"/>
+        </linearGradient>
+        <filter id="lineShadowAff" x="-10%" y="-10%" width="120%" height="120%">
+          <feDropShadow dx="0" dy="3" stdDeviation="2" flood-color="#000" flood-opacity="0.25"/>
+        </filter>
+      </defs>
+
+      ${grid}
+
+      <!-- Target Reference Line -->
+      <line x1="${pad.left}" y1="${targetY}" x2="${width - pad.right}" y2="${targetY}" stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="5 5" style="opacity: 0.75;"></line>
+      <text x="${width - pad.right}" y="${targetY - 5}" text-anchor="end" fill="var(--warn)" style="font-family: var(--font-body); font-weight: 700; font-size: 10px;">Target ${TARGETS.overall}</text>
+
+      <!-- Overall Average Line (Dashed) -->
+      ${overallPath ? `<path d="${overallPath}" stroke="var(--text-muted)" stroke-width="2" stroke-dasharray="4 4" fill="none" style="opacity: 0.55;"></path>` : ""}
+
+      <!-- Affiliation Area Gradient -->
+      ${areaPath ? `<path d="${areaPath}" fill="url(#areaGradientAff)" style="pointer-events: none;"></path>` : ""}
+
+      <!-- Affiliation Trend Line -->
+      ${affPath ? `<path d="${affPath}" stroke="var(--blue)" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#lineShadowAff)"></path>` : ""}
+
+      <!-- Dots for Selected Affiliation -->
+      ${dots}
+
+      <!-- Labels -->
+      ${labels}
+    </svg>
+  `;
+}
+
+function buildAffiliationsComparisonSvg(affiliationsData, overallAvg) {
+  if (affiliationsData.length === 0) {
+    return `<div class="monthly-productivity-empty">ยังไม่มีข้อมูลเปรียบเทียบสังกัด</div>`;
+  }
+
+  const width = 640;
+  const height = 230;
+  const pad = { top: 25, right: 20, bottom: 42, left: 52 };
+  const plotWidth = width - pad.left - pad.right;
+  const plotHeight = height - pad.top - pad.bottom;
+
+  const allValues = [
+    ...affiliationsData.map(d => d.average),
+    overallAvg,
+    TARGETS.overall
+  ];
+  const maxValue = Math.max(...allValues, 1);
+  const scaleMax = Math.ceil((maxValue * 1.12) / 10) * 10;
+  const yOf = (value) => pad.top + plotHeight - ((Number(value || 0) / scaleMax) * plotHeight);
+
+  const n = affiliationsData.length;
+  const step = plotWidth / n;
+  const barWidth = Math.min(50, step * 0.55);
+
+  const grid = [0, 0.5, 1].map((ratio) => {
+    const value = scaleMax * ratio;
+    const y = yOf(value);
+    return `
+      <line class="monthly-chart-grid" x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" stroke="var(--border-subtle)"></line>
+      <text class="monthly-chart-axis" x="${pad.left - 8}" y="${y + 4}" text-anchor="end" fill="var(--text-muted)" style="font-family: var(--font-mono); font-size: 10px;">${escapeHtml(formatProductivityValue(value))}</text>
+    `;
+  }).join("");
+
+  const bars = affiliationsData.map((d, i) => {
+    const x = pad.left + (i * step) + (step - barWidth) / 2;
+    const y = yOf(d.average);
+    const barHeight = Math.max(2, plotHeight - (y - pad.top));
+    const isGood = d.average >= TARGETS.overall;
+    const gradId = isGood ? "barGoodGradAffComp" : "barWarnGradAffComp";
+    const color = isGood ? "var(--good)" : "var(--warn)";
+    const detailText = `ยอดหยิบรวม ${formatInteger(d.totalPick)} ชิ้น · ผู้ปฏิบัติงาน ${formatInteger(d.pickerCount)} คน`;
+
+    return `
+      <g class="monthly-chart-dot-group" style="cursor: pointer;"
+         data-tooltip-title="${escapeHtml(d.name)}"
+         data-tooltip-value="${escapeHtml(formatProductivityValue(d.average) + ' Pick/Hr')}"
+         data-tooltip-detail="${escapeHtml(detailText)}"
+         data-tooltip-trend="${isGood ? 'up' : 'down'}">
+        <rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="4" ry="4" fill="url(#${gradId})" />
+        <rect x="${x}" y="${y}" width="${barWidth}" height="${Math.min(4, barHeight)}" rx="2" ry="2" fill="${color}" style="opacity: 0.95;" />
+      </g>
+    `;
+  }).join("");
+
+  const labels = affiliationsData.map((d, i) => {
+    const x = pad.left + (i * step) + step / 2;
+    const displayName = d.name.length > 12 ? d.name.slice(0, 10) + ".." : d.name;
+    return `<text class="monthly-chart-date" x="${x}" y="${height - 14}" text-anchor="middle" fill="var(--text-secondary)" style="font-family: var(--font-body); font-size: 10px;" title="${escapeHtml(d.name)}">${escapeHtml(displayName)}</text>`;
+  }).join("");
+
+  const targetY = yOf(TARGETS.overall);
+  const overallY = yOf(overallAvg);
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" style="display:block; width:100%; height:auto;">
+      <defs>
+        <linearGradient id="barGoodGradAffComp" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--good)" stop-opacity="0.85"/>
+          <stop offset="100%" stop-color="var(--good)" stop-opacity="0.15"/>
+        </linearGradient>
+        <linearGradient id="barWarnGradAffComp" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--warn)" stop-opacity="0.85"/>
+          <stop offset="100%" stop-color="var(--warn)" stop-opacity="0.15"/>
+        </linearGradient>
+      </defs>
+
+      ${grid}
+
+      <!-- Target Reference Line -->
+      <line x1="${pad.left}" y1="${targetY}" x2="${width - pad.right}" y2="${targetY}" stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="5 5" style="opacity: 0.65;"></line>
+      <text x="${pad.left + 5}" y="${targetY - 5}" text-anchor="start" fill="var(--warn)" style="font-family: var(--font-body); font-weight: 700; font-size: 10px;">Target ${TARGETS.overall}</text>
+
+      <!-- Overall Average Line -->
+      <line x1="${pad.left}" y1="${overallY}" x2="${width - pad.right}" y2="${overallY}" stroke="var(--blue)" stroke-width="2" stroke-dasharray="4 4" style="opacity: 0.85;"></line>
+      <text x="${width - pad.right}" y="${overallY - 5}" text-anchor="end" fill="var(--blue)" style="font-family: var(--font-body); font-weight: 700; font-size: 10px;">เฉลี่ยรวมทุกสังกัด: ${formatProductivityValue(overallAvg)}</text>
+
+      <!-- Bars -->
+      ${bars}
+
+      <!-- Labels -->
+      ${labels}
+    </svg>
+  `;
+}
+
+function renderAffiliationTab(payload) {
+  const kpiRow = document.querySelector("#affiliationKpiRow");
+  const tableBody = document.querySelector("#affiliationTableBody");
+  const pickerSelect = document.querySelector("#affiliationPickerSelect");
+  const pickerTableBody = document.querySelector("#affiliationPickerTableBody");
+
+  // Trend / Compare Widgets
+  const chartTitle = document.querySelector("#affiliationChartTitle");
+  const trendBadge = document.querySelector("#affiliationTrendBadge");
+  const currentValueEl = document.querySelector("#affiliationTrendCurrentValue");
+  const diffValueEl = document.querySelector("#affiliationTrendDiffValue");
+  const insightTextEl = document.querySelector("#affiliationTrendInsightText");
+  const chartContainer = document.querySelector("#affiliationChartContainer");
+  const detailsRow = document.querySelector("#affiliationTrendDetailsRow");
+
+  // Segmented Buttons
+  const btnCompare = document.querySelector("#affiliationChartTabCompare");
+  const btnTrend = document.querySelector("#affiliationChartTabTrend");
+
+  if (!kpiRow || !tableBody || !pickerSelect || !pickerTableBody) {
+    return;
+  }
+
+  const allPickers = payload.pickers?.all || [];
+  
+  if (allPickers.length === 0) {
+    kpiRow.innerHTML = `
+      <article class="kpi-main is-empty" style="grid-column: 1 / -1; min-height: 120px; display: flex; align-items: center; justify-content: center;">
+        <span style="color: var(--text-muted);">ไม่มีข้อมูลสำหรับสรุปรายสังกัด</span>
+      </article>
+    `;
+    tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">ไม่มีข้อมูลรายสังกัด</td></tr>`;
+    pickerSelect.innerHTML = `<option value="">ไม่มีสังกัด</option>`;
+    pickerTableBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">ไม่มีข้อมูลคนในสังกัด</td></tr>`;
+    if (chartContainer) chartContainer.innerHTML = "";
+    return;
+  }
+
+  const groups = {};
+  allPickers.forEach((picker) => {
+    const aff = picker.mainAffiliation || "ไม่ระบุสังกัด";
+    if (!groups[aff]) {
+      groups[aff] = {
+        name: aff,
+        pickers: [],
+        totalPick: 0,
+        totalSum: 0,
+        totalCount: 0
+      };
+    }
+    groups[aff].pickers.push(picker);
+    groups[aff].totalPick += picker.totalPick;
+    groups[aff].totalSum += picker.average * picker.count;
+    groups[aff].totalCount += picker.count;
+  });
+
+  const affiliationsData = Object.keys(groups).map((name) => {
+    const g = groups[name];
+    const average = g.totalCount > 0 ? g.totalSum / g.totalCount : 0;
+    return {
+      name,
+      average: round1(average),
+      rawAverage: average,
+      totalPick: g.totalPick,
+      pickerCount: g.pickers.length,
+      activeDays: g.totalCount,
+      pickers: g.pickers
+    };
+  }).sort((a, b) => b.rawAverage - a.rawAverage);
+
+  const totalAffiliations = affiliationsData.length;
+  const bestAff = affiliationsData[0];
+  const totalYtdPicks = affiliationsData.reduce((sum, a) => sum + a.totalPick, 0);
+
+  kpiRow.innerHTML = `
+    <article class="kpi-stat kpi-stat-total">
+      <div class="kpi-stat-icon">🏢</div>
+      <div class="kpi-stat-body">
+        <div class="kpi-stat-label">จำนวนสังกัดทั้งหมด</div>
+        <div class="kpi-stat-value">${totalAffiliations} สังกัด</div>
+        <div class="kpi-stat-note">ที่มีข้อมูลการทำงานในช่วงนี้</div>
+      </div>
+    </article>
+
+    <article class="kpi-main ${bestAff && bestAff.average >= TARGETS.overall ? "is-good" : "is-warning"}" id="bestAffCard">
+      <div class="kpi-main-head">
+        <span class="kpi-main-label">สังกัดที่มีประสิทธิภาพดีที่สุด</span>
+        <span class="kpi-badge">${bestAff && bestAff.average >= TARGETS.overall ? "ผ่านเกณฑ์" : "ต่ำกว่าเกณฑ์"}</span>
+      </div>
+      <div class="kpi-main-number" style="font-size: 1.6rem; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${bestAff ? bestAff.name : "-"}">${bestAff ? bestAff.name : "-"}</div>
+      <div class="kpi-main-sub">
+        <span>Avg Pick/Hr: <strong>${bestAff ? formatProductivityValue(bestAff.average) : "-"}</strong></span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" style="width: ${bestAff ? Math.min((bestAff.average / TARGETS.overall) * 100, 100) : 0}%"></div>
+      </div>
+    </article>
+
+    <article class="kpi-stat kpi-stat-pick-to-sort">
+      <div class="kpi-stat-icon">Σ</div>
+      <div class="kpi-stat-body">
+        <div class="kpi-stat-label">ยอดหยิบรวมตามสังกัด</div>
+        <div class="kpi-stat-value">${formatInteger(totalYtdPicks)}</div>
+        <div class="kpi-stat-note">รวมชิ้นงานทั้งหมดในช่วงที่เลือก</div>
+      </div>
+    </article>
+  `;
+
+  tableBody.innerHTML = affiliationsData.map((d) => {
+    const info = getStatusInfo(d.average, TARGETS.overall);
+    return `
+      <tr>
+        <td style="font-weight: 700; color: var(--text-primary);">${escapeHtml(d.name)}</td>
+        <td style="text-align: right; font-family: var(--font-mono); font-weight: 700; color: var(--text-primary);">${formatProductivityValue(d.average)}</td>
+        <td style="text-align: right;"><span class="status-pill ${info.className}">${info.label}</span></td>
+        <td style="text-align: right; font-family: var(--font-mono);">${formatInteger(d.totalPick)}</td>
+        <td style="text-align: right; font-family: var(--font-mono);">${formatInteger(d.pickerCount)}</td>
+        <td style="text-align: right; font-family: var(--font-mono);">${formatInteger(d.activeDays)}</td>
+      </tr>
+    `;
+  }).join("");
+
+  const prevSelectedValue = pickerSelect.value;
+  pickerSelect.innerHTML = affiliationsData.map((d) => `
+    <option value="${escapeHtml(d.name)}">${escapeHtml(d.name)} (${d.pickerCount} คน)</option>
+  `).join("");
+
+  if (prevSelectedValue && affiliationsData.some(d => d.name === prevSelectedValue)) {
+    pickerSelect.value = prevSelectedValue;
+  } else if (affiliationsData.length > 0) {
+    pickerSelect.value = affiliationsData[0].name;
+  }
+
+  const overallTrendData = getMonthlyAggregates();
+  const overallAvg = Number(payload.overall?.average || 0);
+
+  function renderSelectedAffiliationPickers() {
+    const selectedName = pickerSelect.value;
+    const group = affiliationsData.find(d => d.name === selectedName);
+    
+    if (!group || !Array.isArray(group.pickers) || group.pickers.length === 0) {
+      pickerTableBody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">ไม่มีผู้ทำงานในสังกัดนี้</td></tr>`;
+      return;
+    }
+
+    const sortedGroupPickers = group.pickers.slice().sort((a, b) => b.average - a.average);
+
+    pickerTableBody.innerHTML = sortedGroupPickers.map((p, index) => {
+      const info = getStatusInfo(p.average, TARGETS.overall);
+      return `
+        <tr>
+          <td style="font-family: var(--font-mono); font-weight: 700;">#${index + 1}</td>
+          <td style="font-weight: 700; color: var(--text-primary);">${escapeHtml(p.name)}</td>
+          <td style="font-family: var(--font-mono); color: var(--text-muted); font-size: 0.78rem;">${escapeHtml(p.userId)}</td>
+          <td style="text-align: right; font-family: var(--font-mono); font-weight: 700; color: var(--text-primary);">${formatProductivityValue(p.average)}</td>
+          <td style="text-align: right;"><span class="status-pill ${info.className}">${info.label}</span></td>
+          <td style="text-align: right; font-family: var(--font-mono);">${formatInteger(p.totalPick)}</td>
+          <td style="text-align: right; font-family: var(--font-mono);">${formatInteger(p.count)}</td>
+          <td>${escapeHtml(p.mainShift)}</td>
+          <td>${escapeHtml(p.mainZone)}</td>
+        </tr>
+      `;
+    }).join("");
+
+    // --- Trend Rendering (Only when Trend tab is active) ---
+    if (chartContainer && currentAffiliationChartTab === "trend") {
+      const trendData = getAffiliationMonthlyData(selectedName, overallTrendData);
+      chartContainer.innerHTML = buildAffiliationTrendSvg(trendData, overallTrendData, "Avg Pick/Hr");
+      setupChartTooltips();
+
+      if (chartTitle) {
+        chartTitle.textContent = `แนวโน้ม Productivity: สังกัด ${selectedName}`;
+      }
+
+      const sortedTrend = trendData.slice().sort((a, b) => a.monthKey.localeCompare(b.monthKey));
+      if (sortedTrend.length > 0) {
+        const current = sortedTrend[sortedTrend.length - 1];
+        if (currentValueEl) {
+          currentValueEl.textContent = formatProductivityValue(current.average);
+        }
+
+        const info = getStatusInfo(current.average, TARGETS.overall);
+        if (trendBadge) {
+          trendBadge.textContent = info.label;
+          trendBadge.className = `status-pill ${info.className}`;
+        }
+
+        if (sortedTrend.length >= 2) {
+          const prev = sortedTrend[sortedTrend.length - 2];
+          const diff = current.average - prev.average;
+          const pct = prev.average > 0 ? (diff / prev.average) * 100 : 0;
+          
+          if (diffValueEl) {
+            if (diff > 0) {
+              diffValueEl.textContent = `▲ +${formatProductivityValue(diff)} (+${round1(pct)}%)`;
+              diffValueEl.style.color = "var(--good)";
+            } else if (diff < 0) {
+              diffValueEl.textContent = `▼ ${formatProductivityValue(diff)} (${round1(pct)}%)`;
+              diffValueEl.style.color = "var(--warn)";
+            } else {
+              diffValueEl.textContent = `▲ 0.0 (คงที่)`;
+              diffValueEl.style.color = "var(--text-muted)";
+            }
+          }
+
+          if (insightTextEl) {
+            const stateText = diff > 0 ? "ดีขึ้น (Improved)" : diff < 0 ? "แย่ลง (Declined)" : "คงที่ (Stable)";
+            insightTextEl.textContent = `ประสิทธิภาพการทำงาน ${stateText} เมื่อเทียบกับเดือนก่อนหน้า (${escapeHtml(prev.labelThaiShort)})`;
+          }
+        } else {
+          if (diffValueEl) {
+            diffValueEl.textContent = "—";
+            diffValueEl.style.color = "var(--text-muted)";
+          }
+          if (insightTextEl) {
+            insightTextEl.textContent = `มีข้อมูลเพียงเดือนเดียวในการวิเคราะห์ (${escapeHtml(current.labelThaiShort)})`;
+          }
+        }
+      } else {
+        if (currentValueEl) currentValueEl.textContent = "—";
+        if (diffValueEl) {
+          diffValueEl.textContent = "—";
+          diffValueEl.style.color = "var(--text-muted)";
+        }
+        if (insightTextEl) insightTextEl.textContent = "ไม่มีข้อมูลประวัติรายเดือนสำหรับสังกัดนี้";
+        if (trendBadge) {
+          trendBadge.textContent = "ไม่มีข้อมูล";
+          trendBadge.className = "status-pill muted";
+        }
+      }
+    }
+  }
+
+  function updateChartDisplay() {
+    if (currentAffiliationChartTab === "compare") {
+      btnCompare?.classList.add("active");
+      btnTrend?.classList.remove("active");
+      if (detailsRow) detailsRow.style.display = "none";
+      if (chartTitle) chartTitle.textContent = "เปรียบเทียบ Productivity ระหว่างสังกัด";
+      
+      const overallInfo = getStatusInfo(overallAvg, TARGETS.overall);
+      if (trendBadge) {
+        trendBadge.textContent = "เฉลี่ยรวม: " + overallInfo.label;
+        trendBadge.className = `status-pill ${overallInfo.className}`;
+      }
+      
+      if (chartContainer) {
+        chartContainer.innerHTML = buildAffiliationsComparisonSvg(affiliationsData, overallAvg);
+        setupChartTooltips();
+      }
+    } else {
+      btnCompare?.classList.remove("active");
+      btnTrend?.classList.add("active");
+      if (detailsRow) detailsRow.style.display = "flex";
+      renderSelectedAffiliationPickers();
+    }
+  }
+
+  if (btnCompare) {
+    btnCompare.onclick = () => {
+      currentAffiliationChartTab = "compare";
+      updateChartDisplay();
+    };
+  }
+  if (btnTrend) {
+    btnTrend.onclick = () => {
+      currentAffiliationChartTab = "trend";
+      updateChartDisplay();
+    };
+  }
+
+  renderSelectedAffiliationPickers();
+  updateChartDisplay();
+
+  pickerSelect.onchange = renderSelectedAffiliationPickers;
 }
 
 function renderCategoryVisual(categories) {
@@ -2660,6 +3920,7 @@ function finalizeRawPickers(rawPickers, target = TARGETS.overall) {
     total: rows.length,
     top: addRank(top.slice(0, 10)),
     bottom: addRank(bottom.slice(0, 10)),
+    all: addRank(top),
   };
 }
 function createCombinedDailySummary() {
@@ -3397,6 +4658,8 @@ function renderDashboard(rawPayload, options = {}) {
   renderSnapshotOverview(payload);
   renderPresentSummary(payload);
   renderPickerRankings(payload.pickers || {}, payload);
+  renderMonthlyTab(payload);
+  renderAffiliationTab(payload);
 
   // Update sync status right away
   if (options.updateStatus !== false) {
@@ -3418,6 +4681,7 @@ function renderDashboard(rawPayload, options = {}) {
       if (trainingGrid) renderTrainingBreakdown(p.training || [], p);
       if (pickerGrid) renderPickerRankings(p.pickers || {}, p);
       if (zoneBreakdownGrid) renderZoneBreakdown(p.zones || [], p);
+      renderAffiliationTab(p);
     } catch (e) {
       console.warn("Pre-rendering all tabs failed", e);
     }
@@ -4107,9 +5371,36 @@ function setQuickRange(range) {
   loadSelectedRange();
 }
 
+async function loadStoredTargetsIdb() {
+  try {
+    const saved = await idbGet(TARGET_STORAGE_KEY);
+    if (saved && typeof saved === "object") {
+      let changed = false;
+      Object.keys(DEFAULT_TARGETS).forEach((key) => {
+        const val = Number(saved[key]);
+        if (Number.isFinite(val) && val > 0 && Math.round(val) !== TARGETS[key]) {
+          TARGETS[key] = Math.round(val);
+          changed = true;
+        }
+      });
+      if (changed) {
+        console.log("Loaded targets from IndexedDB:", TARGETS);
+        try { localStorage.setItem(TARGET_STORAGE_KEY, JSON.stringify(TARGETS)); } catch (e) {}
+        setCookie(TARGET_STORAGE_KEY, TARGETS);
+        rerenderWithCurrentTargets("โหลด Target สำเร็จ");
+      }
+    }
+  } catch (error) {
+    console.warn("IndexedDB load target failed", error);
+  }
+}
+
 function initializeTargetSettings() {
   updateStaticTargetLabels();
   setTargetFormValues();
+  
+  // Load target from IndexedDB asynchronously (covers file:// local restriction or iframe sandboxing)
+  loadStoredTargetsIdb();
 
   targetSettingsButton?.addEventListener("click", openTargetSettings);
   targetSettingsClose?.addEventListener("click", closeTargetSettings);

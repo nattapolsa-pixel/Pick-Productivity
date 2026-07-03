@@ -1748,6 +1748,7 @@ function finalizePickerSummary_(pickerSummary, target) {
     total: rows.length,
     top: addPickerRanks_(top.slice(0, 10)),
     bottom: addPickerRanks_(bottom.slice(0, 10)),
+    all: rows,
   };
 }
 function normalizeGroupLabel_(value, fallback) {
