@@ -175,7 +175,7 @@
                 <rect x="1" y="11" width="14" height="2.5" rx="1" fill="currentColor" opacity=".3" />
               </svg>
             </span>
-            <span class="nav-label">Type</span>
+            <span class="nav-label">Type & Zone</span>
           </button>
         </li>
 
@@ -230,18 +230,6 @@
           </button>
         </li>
 
-        <li>
-          <button class="nav-item" data-tab="zone">
-            <span class="nav-icon">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M8 2C5.24 2 3 4.24 3 7c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5z" stroke="currentColor"
-                  stroke-width="1.5" opacity=".8" />
-                <circle cx="8" cy="7" r="1.5" fill="currentColor" />
-              </svg>
-            </span>
-            <span class="nav-label">Zone</span>
-          </button>
-        </li>
       </ul>
 
       <div class="warehouse-mascot" aria-hidden="true">
@@ -709,15 +697,27 @@
 
       <!-- TAB: RACK -->
       <section class="tab-panel" id="tab-rack">
-        <div class="panel-header">
+        <div class="panel-header" style="margin-bottom: 2rem;">
           <div>
-            <p class="panel-eyebrow">BREAKDOWN</p>
-            <h1 class="panel-title">Work Type Breakdown</h1>
+            <p class="panel-eyebrow">BREAKDOWN & POSITION</p>
+            <h1 class="panel-title">Work Type & Zone Breakdown</h1>
           </div>
-          <p class="panel-desc">Main KPI: Full Rack 37% / Half Rack 48% / EA 15% · Pick to Sort จาก Column AK เริ่มนับ
-            8/6/2026</p>
+          <p class="panel-desc">วิเคราะห์ประสิทธิภาพการทำงานแยกตามประเภทงาน (Work Type) และตำแหน่งพื้นที่ทำงาน (Zone)</p>
         </div>
-        <div class="category-grid" id="categoryGrid" aria-label="Category KPI"></div>
+
+        <!-- SECTION: WORK TYPE -->
+        <div class="type-section" style="margin-bottom: 3.5rem;">
+          <h2 style="font-size: 1.15rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">ประเภทงาน (Work Type)</h2>
+          <p class="panel-desc" style="margin-bottom: 1.25rem;">Main KPI Target: Full Rack 37% / Half Rack 48% / EA 15% · Pick to Sort จาก Column AK เริ่มนับ 8/6/2026</p>
+          <div class="category-grid" id="categoryGrid" aria-label="Category KPI"></div>
+        </div>
+
+        <!-- SECTION: ZONE -->
+        <div class="zone-section" style="border-top: 1px solid var(--border-subtle); padding-top: 2rem; margin-bottom: 1.5rem;">
+          <h2 style="font-size: 1.15rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">ตำแหน่งพื้นที่ทำงาน (Zone)</h2>
+          <p class="panel-desc" style="margin-bottom: 1.25rem;">Zone EA มี Weight: EA-FA 85% / HA-HB 0% / YA 15% (Column AH)</p>
+          <div class="zone-grid" id="zoneBreakdownGrid" aria-label="Zone KPI"></div>
+        </div>
       </section>
 
       <!-- TAB: PICK TO SORT -->
@@ -795,17 +795,6 @@
         <div class="bu-grid" id="buGrid" aria-label="BU KPI"></div>
       </section>
 
-      <!-- TAB: ZONE -->
-      <section class="tab-panel" id="tab-zone">
-        <div class="panel-header">
-          <div>
-            <p class="panel-eyebrow">POSITION BREAKDOWN</p>
-            <h1 class="panel-title">Productivity แยกตาม Zone</h1>
-          </div>
-          <p class="panel-desc">Zone EA มี Weight: EA-FA 85% / HA-HB 0% / YA 15% (Column AH)</p>
-        </div>
-        <div class="zone-grid" id="zoneBreakdownGrid" aria-label="Zone KPI"></div>
-      </section>
 
     </main>
   </div>
