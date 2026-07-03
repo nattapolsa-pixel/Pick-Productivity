@@ -1,1 +1,902 @@
+<!DOCTYPE html>
+<html lang="th">
 
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pick Productivity Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap"
+    rel="stylesheet">
+  <link rel="preconnect" href="https://script.google.com">
+  <link rel="preconnect" href="https://script.googleusercontent.com">
+  <link rel="stylesheet" href="styles.css?v=pick-to-sort-total-pick-v63-20260611">
+</head>
+
+<body>
+  <div class="dashboard-ambient" aria-hidden="true">
+    <span class="ambient-line ambient-line-a"></span>
+    <span class="ambient-line ambient-line-b"></span>
+    <span class="ambient-scan"></span>
+  </div>
+
+  <!-- ===== TOP BAR ===== -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-logo">
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+          <rect width="28" height="28" rx="6" fill="#1A6CF6" />
+          <rect x="5" y="8" width="4" height="12" rx="1" fill="white" />
+          <rect x="12" y="5" width="4" height="18" rx="1" fill="white" opacity="0.7" />
+          <rect x="19" y="11" width="4" height="9" rx="1" fill="white" opacity="0.5" />
+        </svg>
+        <span class="topbar-title">Pick Productivity</span>
+        <span class="topbar-tag">DASHBOARD</span>
+        <span class="topbar-signal" aria-hidden="true"><i></i></span>
+      </div>
+    </div>
+
+    <div class="topbar-center">
+      <div class="quick-filters">
+        <button class="chip active" type="button" data-range="latest">ล่าสุด</button>
+        <button class="chip" type="button" data-range="all">ทั้งหมด</button>
+        <button class="chip" type="button" data-range="today">วันนี้</button>
+        <button class="chip" type="button" data-range="week">สัปดาห์นี้</button>
+        <button class="chip" type="button" data-range="month">เดือนนี้</button>
+      </div>
+    </div>
+
+    <div class="topbar-right">
+      <div class="date-filter-row">
+        <input id="startDate" type="date" class="date-input" placeholder="วันเริ่มต้น">
+        <span class="date-sep">—</span>
+        <input id="endDate" type="date" class="date-input" placeholder="วันสิ้นสุด">
+        <button id="applyDateButton" class="btn-apply" type="button">ใช้</button>
+      </div>
+
+      <button id="targetSettingsButton" class="btn-target" type="button" aria-haspopup="dialog">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M2 11h10M3 8h8M4 5h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          <path d="M10 2v3M4 8v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".7" />
+        </svg>
+        Target
+      </button>
+
+      <button id="themeToggleButton" class="btn-target" type="button" aria-pressed="false" aria-label="สลับธีม">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <circle cx="7" cy="7" r="4" fill="currentColor" />
+        </svg>
+        ธีม
+      </button>
+
+      <button id="refreshButton" class="btn-refresh" type="button">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M13 7A6 6 0 1 1 7 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          <path d="M7 1l2 2-2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+            stroke-linejoin="round" />
+        </svg>
+        รีเฟรช
+      </button>
+
+      <span id="syncStatus" class="sync-badge" role="status" aria-live="polite">กำลังโหลด...</span>
+    </div>
+  </header>
+
+  <!-- ===== MAIN LAYOUT ===== -->
+  <div class="app-layout">
+
+    <!-- ===== SIDEBAR TAB NAV ===== -->
+    <nav class="sidebar">
+      <div class="sidebar-kpi-mini">
+        <div class="sidebar-kpi-label">Overall Avg Pick/Hr</div>
+        <div class="sidebar-kpi-value" id="sidebarOverall">—</div>
+        <div class="sidebar-kpi-target" data-target-label="overall">Target ≥ 170</div>
+        <div class="sidebar-progress-track">
+          <div class="sidebar-progress-fill" id="sidebarProgress"></div>
+        </div>
+        <div class="sidebar-kpi-status" id="sidebarStatus">—</div>
+      </div>
+
+      <ul class="nav-list">
+        <li>
+          <button class="nav-item active" data-tab="overview">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <rect x="1" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".8" />
+                <rect x="9" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".5" />
+                <rect x="1" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".5" />
+                <rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".3" />
+              </svg>
+            </span>
+            <span class="nav-label">Overview</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="nav-item" data-tab="monthly">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <rect x="2" y="3" width="12" height="11" rx="2" stroke="currentColor" stroke-width="1.5" />
+                <path d="M5 2v2M11 2v2M2 7h12" stroke="currentColor" stroke-width="1.5" />
+              </svg>
+            </span>
+            <span class="nav-label">Monthly</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="nav-item" data-tab="pickers">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M3 13h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".4" />
+                <path d="M4 11V6.5M8 11V3M12 11V8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+                <circle cx="4" cy="5" r="1.3" fill="currentColor" opacity=".65" />
+                <circle cx="8" cy="2.4" r="1.3" fill="currentColor" opacity=".9" />
+                <circle cx="12" cy="7" r="1.3" fill="currentColor" opacity=".55" />
+              </svg>
+            </span>
+            <span class="nav-label">Pickers</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="nav-item" data-tab="affiliation">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M4 14V8M8 14V4M12 14V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                <circle cx="8" cy="2" r="1.5" fill="currentColor" />
+              </svg>
+            </span>
+            <span class="nav-label">Affiliation</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="nav-item" data-tab="present">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M2 11.5h12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".45" />
+                <path d="M3 10l2.4-3 2.2 1.7L10.6 4 13 6.2" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round" stroke-linejoin="round" />
+                <circle cx="10.6" cy="4" r="1.1" fill="currentColor" opacity=".8" />
+              </svg>
+            </span>
+            <span class="nav-label">Present</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="nav-item" data-tab="rack">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <rect x="1" y="3" width="14" height="2.5" rx="1" fill="currentColor" opacity=".8" />
+                <rect x="1" y="7" width="14" height="2.5" rx="1" fill="currentColor" opacity=".5" />
+                <rect x="1" y="11" width="14" height="2.5" rx="1" fill="currentColor" opacity=".3" />
+              </svg>
+            </span>
+            <span class="nav-label">Type</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="nav-item" data-tab="pick-to-sort">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M2 4h7.5c1.7 0 3 1.3 3 3s-1.3 3-3 3H5" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round" />
+                <path d="M5.5 2.2 2 4l3.5 1.8M5 8.2 2 10l3 1.8" stroke="currentColor" stroke-width="1.4"
+                  stroke-linecap="round" stroke-linejoin="round" opacity=".7" />
+              </svg>
+            </span>
+            <span class="nav-label">Pick to Sort</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="nav-item" data-tab="shift">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5" opacity=".7" />
+                <path d="M8 4.5V8l3 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+              </svg>
+            </span>
+            <span class="nav-label">Shift</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="nav-item" data-tab="training">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M2 12l3-4 3 2 3-5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                  stroke-linejoin="round" opacity=".8" />
+              </svg>
+            </span>
+            <span class="nav-label">Training</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="nav-item" data-tab="bu">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <rect x="2" y="8" width="4" height="6" rx="1" fill="currentColor" opacity=".8" />
+                <rect x="7" y="4" width="4" height="10" rx="1" fill="currentColor" opacity=".5" />
+                <rect x="12" y="1" width="2" height="13" rx="1" fill="currentColor" opacity=".3" />
+              </svg>
+            </span>
+            <span class="nav-label">BU</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="nav-item" data-tab="zone">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M8 2C5.24 2 3 4.24 3 7c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5z" stroke="currentColor"
+                  stroke-width="1.5" opacity=".8" />
+                <circle cx="8" cy="7" r="1.5" fill="currentColor" />
+              </svg>
+            </span>
+            <span class="nav-label">Zone</span>
+          </button>
+        </li>
+      </ul>
+
+      <div class="warehouse-mascot" aria-hidden="true">
+        <div class="mascot-signal"><span></span><span></span><span></span></div>
+        <div class="mascot-helmet"></div>
+        <div class="mascot-head"><i></i><i></i></div>
+        <div class="mascot-body">
+          <span class="mascot-badge"></span>
+        </div>
+        <div class="mascot-box"></div>
+        <div class="mascot-shadow"></div>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-note">ค่าจาก Column AF</div>
+        <div class="sidebar-note">ตัดค่า 0 ออกอัตโนมัติ</div>
+      </div>
+    </nav>
+
+    <!-- ===== CONTENT AREA ===== -->
+    <main class="content-area">
+
+      <!-- TAB: OVERVIEW -->
+      <section class="tab-panel active" id="tab-overview">
+        <div class="panel-header">
+          <div>
+            <p class="panel-eyebrow">OVERVIEW</p>
+            <h1 class="panel-title">Picking Productivity — ภาพรวม</h1>
+          </div>
+        </div>
+
+        <div class="active-date-banner" id="activeDateBanner" aria-live="polite">
+          <div>
+            <span class="active-date-eyebrow">ข้อมูลที่กำลังแสดง</span>
+            <strong id="activeDateLabel">กำลังตรวจสอบวันที่ล่าสุด...</strong>
+          </div>
+          <span id="activeDateHint"
+            class="active-date-hint">เปิดเว็บแล้วระบบจะแสดงวันที่ล่าสุดที่มีข้อมูลให้อัตโนมัติ</span>
+        </div>
+
+        <!-- KPI TRIO -->
+        <div class="kpi-trio">
+          <article class="kpi-main" id="overallCard">
+            <div class="kpi-main-head">
+              <span class="kpi-main-label">Overall Avg Pick/Hr</span>
+              <span class="kpi-badge" id="overallStatus">—</span>
+            </div>
+            <div class="kpi-main-number" id="overallAverage">—</div>
+            <div class="kpi-main-sub">
+              <span data-target-label="overall">Target ≥ 170</span>
+              <span id="overallGap">—</span>
+            </div>
+            <div class="progress-track">
+              <div id="overallProgress" class="progress-fill"></div>
+            </div>
+          </article>
+
+          <article class="kpi-stat kpi-stat-total">
+            <div class="kpi-stat-icon">Σ</div>
+            <div class="kpi-stat-body">
+              <div class="kpi-stat-label">Total Pick</div>
+              <div class="kpi-stat-value" id="overviewTotalPick">—</div>
+              <div class="kpi-stat-note" id="overviewTotalPickNote">—</div>
+            </div>
+          </article>
+
+          <article class="kpi-stat kpi-stat-pick-to-sort" id="overviewPickToSortCard">
+            <div class="kpi-stat-icon">P2S</div>
+            <div class="kpi-stat-body">
+              <div class="kpi-stat-label">Pick to Sort Avg</div>
+              <div class="kpi-stat-value" id="overviewPickToSortAverage">—</div>
+              <div class="kpi-stat-note" id="overviewPickToSortNote">—</div>
+            </div>
+          </article>
+
+        </div>
+
+        <div class="snapshot-grid" id="snapshotGrid" aria-hidden="true"></div>
+
+        <!-- VISUAL TRIO -->
+        <div class="visual-trio">
+          <article class="visual-card gauge-card">
+            <div class="visual-card-head">
+              <div>
+                <p class="visual-card-eyebrow">LIVE SCORE</p>
+                <h2 class="visual-card-title">Overall Performance</h2>
+              </div>
+              <span id="gaugeBadge" class="status-pill">—</span>
+            </div>
+            <div class="gauge-wrap">
+              <div class="gauge-ring" id="overallGauge" style="--score-angle: 0deg;">
+                <span id="gaugeValue">—</span>
+                <small>Avg Pick/Hr</small>
+              </div>
+              <div class="gauge-copy">
+                <strong id="gaugeTargetText">Target ≥ 170</strong>
+                <span id="gaugeInsight">กำลังโหลด...</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="visual-card">
+            <div class="visual-card-head">
+              <div>
+                <p class="visual-card-eyebrow">WORK TYPE</p>
+                <h2 class="visual-card-title">เทียบ Target ตามประเภทงาน</h2>
+              </div>
+              <span class="status-pill muted">AF</span>
+            </div>
+            <div id="categoryMiniChart" class="mini-chart"></div>
+          </article>
+
+          <article class="visual-card">
+            <div class="visual-card-head">
+              <div>
+                <p class="visual-card-eyebrow">SHIFT VIEW</p>
+                <h2 class="visual-card-title">กะที่ควรโฟกัส</h2>
+              </div>
+              <span class="status-pill muted">AG / AI</span>
+            </div>
+            <div id="shiftMiniChart" class="mini-chart"></div>
+          </article>
+        </div>
+
+        <section class="monthly-productivity-panel" aria-labelledby="monthlyProductivityTitle">
+          <div class="monthly-productivity-head">
+            <div>
+              <p class="visual-card-eyebrow">MONTHLY TREND</p>
+              <h2 class="visual-card-title" id="monthlyProductivityTitle">Productivity รายวันทั้งเดือน</h2>
+              <p class="monthly-productivity-desc" id="monthlyProductivityRange">วันที่ 1 ถึงวันสิ้นเดือน</p>
+            </div>
+            <div class="monthly-productivity-summary" id="monthlyProductivitySummary"></div>
+          </div>
+          <div class="monthly-productivity-chart" id="monthlyProductivityChart"></div>
+          <div class="monthly-productivity-days" id="monthlyProductivityDays"></div>
+        </section>
+      </section>
+
+      <!-- TAB: MONTHLY -->
+      <section class="tab-panel" id="tab-monthly">
+        <div class="panel-header">
+          <div>
+            <p class="panel-eyebrow">MONTHLY PERFORMANCE</p>
+            <h1 class="panel-title">Productivity รายเดือน (Monthly Trend)</h1>
+          </div>
+          <p class="panel-desc">เปรียบเทียบค่าเฉลี่ย Productivity (Avg Pick/Hr) และยอดหยิบรวม (Total Pick)
+            ในแต่ละเดือนตลอดทั้งปี</p>
+        </div>
+
+        <div class="kpi-trio" id="monthlyKpiRow">
+          <!-- Populated dynamically -->
+        </div>
+
+        <section class="monthly-productivity-panel" aria-labelledby="monthlyChartTitle" style="margin-bottom: 2rem;">
+          <div class="monthly-productivity-head">
+            <div>
+              <p class="visual-card-eyebrow">YEARLY TREND</p>
+              <h2 class="visual-card-title" id="monthlyChartTitle">เปรียบเทียบ Productivity รายเดือน</h2>
+              <p class="monthly-productivity-desc" id="monthlyChartDesc">เฉลี่ยของพนักงานทุกคน แยกตามเดือน (Jan - Dec)
+              </p>
+            </div>
+            <div class="monthly-productivity-summary" id="monthlyChartSummary"></div>
+          </div>
+          <div class="monthly-productivity-chart" id="monthlyChartContainer"></div>
+        </section>
+
+        <!-- EXECUTIVE MONTHLY PRESENTATION / BRIEFING -->
+        <section class="monthly-present-briefing" id="monthlyPresentBriefing" style="margin-top: 2rem; display: none;">
+          <div class="present-narrative-card"
+            style="margin-bottom: 1.5rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 1.25rem;">
+            <div class="present-card-topline"
+              style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; font-family: var(--font-body);">
+              <span>Monthly Executive Briefing</span>
+              <strong id="monthlyPresentPeriodLabel" style="color: var(--blue);">—</strong>
+            </div>
+            <h2 id="monthlyPresentHeadline"
+              style="font-size: 1.2rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.5rem; font-family: var(--font-body);">
+              —</h2>
+            <p id="monthlyPresentNarrative"
+              style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6; margin: 0; font-family: var(--font-body);">
+            </p>
+          </div>
+
+          <div class="present-brief-grid"
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; margin-bottom: 2rem; font-family: var(--font-body);">
+            <article class="present-brief-card is-highlight"
+              style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 1.2rem; border-left: 4px solid var(--good);">
+              <div class="present-brief-head" style="margin-bottom: 0.75rem;">
+                <span
+                  style="font-size: 0.65rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">MONTHLY
+                  FOCUS</span>
+                <h2 style="font-size: 0.95rem; font-weight: 700; margin: 0; color: var(--good);">จุดที่ผลงานดีที่สุด /
+                  พัฒนาการเด่น</h2>
+              </div>
+              <ul id="monthlyPresentHighlights"
+                style="padding-left: 1.2rem; margin: 0; font-size: 0.82rem; color: var(--text-secondary); line-height: 1.6;">
+              </ul>
+            </article>
+
+            <article class="present-brief-card is-risk"
+              style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 1.2rem; border-left: 4px solid var(--warn);">
+              <div class="present-brief-head" style="margin-bottom: 0.75rem;">
+                <span
+                  style="font-size: 0.65rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">MONTHLY
+                  RISK</span>
+                <h2 style="font-size: 0.95rem; font-weight: 700; margin: 0; color: var(--warn);">จุดที่ต้องเฝ้าระวัง /
+                  ผลงานตกต่ำ</h2>
+              </div>
+              <ul id="monthlyPresentRisks"
+                style="padding-left: 1.2rem; margin: 0; font-size: 0.82rem; color: var(--text-secondary); line-height: 1.6;">
+              </ul>
+            </article>
+
+            <article class="present-brief-card is-action"
+              style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 1.2rem; border-left: 4px solid var(--blue);">
+              <div class="present-brief-head" style="margin-bottom: 0.75rem;">
+                <span
+                  style="font-size: 0.65rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">RECOMMENDED
+                  ACTIONS</span>
+                <h2 style="font-size: 0.95rem; font-weight: 700; margin: 0; color: var(--blue);">คำแนะนำและประเด็นสำคัญ
+                </h2>
+              </div>
+              <ul id="monthlyPresentActions"
+                style="padding-left: 1.2rem; margin: 0; font-size: 0.82rem; color: var(--text-secondary); line-height: 1.6;">
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="monthly-details-section">
+          <div class="panel-header" style="margin-top: 2rem; padding: 0 0 1rem 0;">
+            <div>
+              <p class="panel-eyebrow">DETAILS</p>
+              <h2 class="panel-title" style="font-size: 1.25rem;">รายละเอียดข้อมูลแต่ละเดือน</h2>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>เดือน</th>
+                  <th>Productivity เฉลี่ย (Pick/Hr)</th>
+                  <th>เปรียบเทียบเป้า</th>
+                  <th>ยอดหยิบรวม (Total Pick)</th>
+                  <th>จำนวนวันทำงาน</th>
+                  <th>จำนวนรายการ (Transactions)</th>
+                </tr>
+              </thead>
+              <tbody id="monthlyTableBody">
+                <!-- Populated dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- TAB: PICKERS -->
+      <section class="tab-panel" id="tab-pickers">
+        <div class="panel-header picker-panel-header">
+          <div>
+            <p class="panel-eyebrow">PICKER RANKING</p>
+            <h1 class="panel-title">Top Pick / Bottom Pick รายคน</h1>
+          </div>
+          <p class="panel-desc">จัดอันดับจาก Average Pick/Hr Column AF ตามช่วงวันที่ที่เลือก
+            ใช้ดูคนที่ทำได้ดีและคนที่ควรติดตามก่อน</p>
+        </div>
+
+        <div class="picker-grid" id="pickerGrid" aria-label="Top Pick and Bottom Pick ranking"></div>
+      </section>
+
+      <!-- TAB: AFFILIATION -->
+      <section class="tab-panel" id="tab-affiliation">
+        <div class="panel-header">
+          <div>
+            <p class="panel-eyebrow">AFFILIATION PERFORMANCE</p>
+            <h1 class="panel-title">ประสิทธิภาพการทำงานแยกตามสังกัด (Affiliation)</h1>
+          </div>
+          <p class="panel-desc">วิเคราะห์ข้อมูลผลงานรายสังกัด (จาก Column AI ใน Results Master) แสดงจำนวนคนทำงาน
+            ยอดรวมการหยิบ และเปรียบเทียบระดับผู้ปฏิบัติงานแต่ละบุคคล</p>
+        </div>
+
+        <!-- KPI SUMMARY CARDS -->
+        <div class="kpi-trio" id="affiliationKpiRow">
+          <!-- Populated by JavaScript -->
+        </div>
+
+        <!-- MAIN LAYOUT GRID -->
+        <div class="visual-trio"
+          style="grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
+          <article class="visual-card">
+            <div class="visual-card-head">
+              <div>
+                <p class="visual-card-eyebrow">OVERVIEW</p>
+                <h2 class="visual-card-title">สรุปผลงานแต่ละสังกัด</h2>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="picker-table">
+                <thead>
+                  <tr>
+                    <th>สังกัด (Affiliation)</th>
+                    <th style="text-align: right;">Avg Pick/Hr</th>
+                    <th style="text-align: right;">Target status</th>
+                    <th style="text-align: right;">ยอดรวมการหยิบ (Picks)</th>
+                    <th style="text-align: right;">จำนวนผู้ปฏิบัติงาน (คน)</th>
+                    <th style="text-align: right;">จำนวนวันที่ทำงาน (วัน)</th>
+                  </tr>
+                </thead>
+                <tbody id="affiliationTableBody">
+                  <!-- Populated by JavaScript -->
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="visual-card" style="display: flex; flex-direction: column;">
+            <div class="visual-card-head"
+              style="justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.50rem;">
+              <div>
+                <p class="visual-card-eyebrow">TREND ANALYSIS</p>
+                <h2 class="visual-card-title" id="affiliationChartTitle">แนวโน้ม Productivity สังกัด</h2>
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <div class="present-range-switch" style="padding: 0.15rem; gap: 0.15rem;"
+                  aria-label="เลือกโหมดกราฟสังกัด">
+                  <button type="button" class="present-range-btn active" id="affiliationChartTabCompare"
+                    style="padding: 0.30rem 0.60rem; font-size: 0.72rem;">เปรียบเทียบสังกัด</button>
+                  <button type="button" class="present-range-btn" id="affiliationChartTabTrend"
+                    style="padding: 0.30rem 0.60rem; font-size: 0.72rem;">แนวโน้มรายเดือน</button>
+                </div>
+                <div id="affiliationTrendBadge" class="status-pill muted" style="font-weight: 700;">—</div>
+              </div>
+            </div>
+            <!-- TREND KPI & DETAILS -->
+            <div id="affiliationTrendDetailsRow"
+              style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.15rem; flex-wrap: wrap;">
+              <div>
+                <span
+                  style="display: block; font-size: 0.68rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.2rem;">เฉลี่ยเดือนล่าสุด</span>
+                <strong id="affiliationTrendCurrentValue"
+                  style="font-size: 1.45rem; font-family: var(--font-mono); color: var(--text-primary);">—</strong>
+              </div>
+              <div>
+                <span
+                  style="display: block; font-size: 0.68rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.2rem;">เทียบเดือนก่อน</span>
+                <strong id="affiliationTrendDiffValue"
+                  style="font-size: 1.45rem; font-family: var(--font-mono);">—</strong>
+              </div>
+              <div style="flex: 1; min-width: 140px;">
+                <span
+                  style="display: block; font-size: 0.68rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.2rem;">สรุปแนวโน้ม</span>
+                <span id="affiliationTrendInsightText"
+                  style="display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; font-size: 0.78rem; color: var(--text-secondary); line-height: 1.45; overflow: hidden; text-overflow: ellipsis;">—</span>
+              </div>
+            </div>
+            <div class="monthly-productivity-chart" id="affiliationChartContainer"
+              style="margin-top: auto; background: rgba(0,0,0,0.12); border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); overflow: hidden; padding: 0.5rem 0.2rem 0;">
+              <!-- SVG Chart populated dynamically -->
+            </div>
+          </article>
+        </div>
+
+        <!-- PICKER DETAIL BREAKDOWN SECTION -->
+        <div class="visual-trio" style="grid-template-columns: 1fr;">
+          <article class="visual-card">
+            <div class="visual-card-head"
+              style="flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between;">
+              <div>
+                <p class="visual-card-eyebrow">INDIVIDUAL DETAILS</p>
+                <h2 class="visual-card-title">รายชื่อผู้ปฏิบัติงานในสังกัด</h2>
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.50rem;">
+                <span style="font-size: 0.82rem; color: var(--text-muted); font-weight: 600;">เลือกสังกัด:</span>
+                <select id="affiliationPickerSelect" class="date-input"
+                  style="height: 32px; padding: 0 1rem 0 0.50rem; min-width: 140px; background: var(--bg-raised); border: 1px solid var(--border-mid); border-radius: var(--radius-sm); color: var(--text-primary);">
+                  <!-- Populated dynamically -->
+                </select>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="picker-table">
+                <thead>
+                  <tr>
+                    <th>อันดับ (Rank)</th>
+                    <th>ชื่อผู้ปฏิบัติงาน (Name)</th>
+                    <th>User ID</th>
+                    <th style="text-align: right;">Avg Pick/Hr</th>
+                    <th style="text-align: right;">Target status</th>
+                    <th style="text-align: right;">ยอดรวมการหยิบ (Picks)</th>
+                    <th style="text-align: right;">จำนวนวันทำงาน</th>
+                    <th>กะหลัก (Shift)</th>
+                    <th>โซนหลัก (Zone)</th>
+                  </tr>
+                </thead>
+                <tbody id="affiliationPickerTableBody">
+                  <tr>
+                    <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                      กรุณาเลือกสังกัดด้านบนเพื่อดูรายละเอียดรายบุคคล</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- TAB: PRESENT -->
+      <section class="tab-panel" id="tab-present">
+        <div class="panel-header present-header">
+          <div>
+            <p class="panel-eyebrow">PRESENT</p>
+            <h1 class="panel-title">Executive Summary</h1>
+          </div>
+          <div class="present-range-switch" aria-label="เลือกช่วงสรุปผู้บริหาร">
+            <button type="button" class="present-range-btn" data-present-range="week">Weekly</button>
+            <button type="button" class="present-range-btn" data-present-range="month">Monthly</button>
+          </div>
+        </div>
+
+        <section class="present-hero" aria-label="สรุปภาพรวมสำหรับผู้บริหาร">
+          <article class="present-narrative-card">
+            <div class="present-card-topline">
+              <span>AI-STYLE BRIEF</span>
+              <strong id="presentPeriodLabel">—</strong>
+            </div>
+            <h2 id="presentHeadline">กำลังวิเคราะห์ข้อมูล...</h2>
+            <p id="presentNarrative">ระบบจะสรุปภาพรวม Productivity จากทุกเมนูให้เป็นภาษาผู้บริหารหลังโหลดข้อมูลเสร็จ</p>
+          </article>
+
+          <aside class="present-score-card" id="presentScoreCard">
+            <span>Overall Avg Pick/Hr</span>
+            <strong id="presentOverallScore">—</strong>
+            <small id="presentOverallStatus">—</small>
+          </aside>
+        </section>
+
+        <div class="present-kpi-grid" id="presentKpiGrid" aria-label="Executive KPI summary"></div>
+
+        <section class="present-brief-grid" aria-label="AI summary details">
+          <article class="present-brief-card is-highlight">
+            <div class="present-brief-head">
+              <span>WHAT IS GOOD</span>
+              <h2>จุดที่ดี</h2>
+            </div>
+            <ul id="presentHighlights" class="present-list"></ul>
+          </article>
+
+          <article class="present-brief-card is-risk">
+            <div class="present-brief-head">
+              <span>WATCH OUT</span>
+              <h2>จุดที่ควรระวัง</h2>
+            </div>
+            <ul id="presentRisks" class="present-list"></ul>
+          </article>
+
+          <article class="present-brief-card is-action">
+            <div class="present-brief-head">
+              <span>NEXT ACTION</span>
+              <h2>ข้อเสนอให้ทำต่อ</h2>
+            </div>
+            <ul id="presentActions" class="present-list"></ul>
+          </article>
+        </section>
+      </section>
+
+      <!-- TAB: RACK -->
+      <section class="tab-panel" id="tab-rack">
+        <div class="panel-header">
+          <div>
+            <p class="panel-eyebrow">BREAKDOWN</p>
+            <h1 class="panel-title">Work Type Breakdown</h1>
+          </div>
+          <p class="panel-desc">Main KPI: Full Rack 37% / Half Rack 48% / EA 15% · Pick to Sort จาก Column AK เริ่มนับ
+            8/6/2026</p>
+        </div>
+        <div class="category-grid" id="categoryGrid" aria-label="Category KPI"></div>
+      </section>
+
+      <!-- TAB: PICK TO SORT -->
+      <section class="tab-panel" id="tab-pick-to-sort">
+        <div class="panel-header">
+          <div>
+            <p class="panel-eyebrow">PICK TO SORT FOCUS</p>
+            <h1 class="panel-title">Productivity Pick to Sort</h1>
+          </div>
+          <p class="panel-desc">ใช้ Pick Type จาก Column AK · เริ่มคำนวณตั้งแต่ 8/6/2026 · ค่าเฉลี่ยจาก Column AF</p>
+        </div>
+        <div class="pick-to-sort-dashboard" id="pickToSortGrid" aria-label="Pick to Sort dashboard"></div>
+      </section>
+
+      <!-- TAB: SHIFT -->
+      <section class="tab-panel" id="tab-shift">
+        <div class="panel-header">
+          <div>
+            <p class="panel-eyebrow">SHIFT BREAKDOWN</p>
+            <h1 class="panel-title">Productivity แยกตามกะ</h1>
+          </div>
+          <p class="panel-desc">แตกสังกัดจาก Column AI · ใช้ค่า Average Pick/Hr จาก Column AF</p>
+        </div>
+        <div class="shift-grid" id="shiftGrid" aria-label="Shift KPI"></div>
+      </section>
+
+      <!-- TAB: TRAINING -->
+      <section class="tab-panel" id="tab-training">
+        <div class="panel-header">
+          <div>
+            <p class="panel-eyebrow">TRAINING DEEP DIVE</p>
+            <h1 class="panel-title">Productivity Training</h1>
+          </div>
+          <p class="panel-desc">วันเริ่มงานถึง 2 เดือน · Column D = Update name Column B · วันที่เริ่ม H / วันสิ้นสุด M
+          </p>
+        </div>
+        <div class="training-summary-grid" id="trainingSummaryGrid" aria-label="Training summary"></div>
+
+        <div class="training-insight-layout">
+          <article class="training-insight-card">
+            <div class="training-insight-head">
+              <div>
+                <p class="visual-card-eyebrow">TREND SUMMARY</p>
+                <h2 class="visual-card-title">ภาพรวมผล Training</h2>
+              </div>
+              <span class="status-pill muted">H → M</span>
+            </div>
+            <div class="training-stack" id="trainingTrendChart"></div>
+          </article>
+
+          <article class="training-insight-card">
+            <div class="training-insight-head">
+              <div>
+                <p class="visual-card-eyebrow">FOCUS LIST</p>
+                <h2 class="visual-card-title">คนที่ควรดูต่อก่อน</h2>
+              </div>
+              <span class="status-pill muted">Top 6</span>
+            </div>
+            <div class="training-focus-list" id="trainingFocusList"></div>
+          </article>
+        </div>
+
+        <div class="training-grid" id="trainingGrid" aria-label="Training Productivity"></div>
+      </section>
+
+      <!-- TAB: BU -->
+      <section class="tab-panel" id="tab-bu">
+        <div class="panel-header">
+          <div>
+            <p class="panel-eyebrow">BU FOCUS</p>
+            <h1 class="panel-title">Productivity แยกตาม BU</h1>
+          </div>
+          <p class="panel-desc">Punthai 51/49/0 · Mart 40/50/10 · แยก Full Rack / Half Rack / EA (Column AJ)</p>
+        </div>
+        <div class="bu-grid" id="buGrid" aria-label="BU KPI"></div>
+      </section>
+
+      <!-- TAB: ZONE -->
+      <section class="tab-panel" id="tab-zone">
+        <div class="panel-header">
+          <div>
+            <p class="panel-eyebrow">POSITION BREAKDOWN</p>
+            <h1 class="panel-title">Productivity แยกตาม Zone</h1>
+          </div>
+          <p class="panel-desc">Zone EA มี Weight: EA-FA 85% / HA-HB 0% / YA 15% (Column AH)</p>
+        </div>
+        <div class="zone-grid" id="zoneBreakdownGrid" aria-label="Zone KPI"></div>
+      </section>
+
+    </main>
+  </div>
+
+  <div class="loading-modal" id="loadingModal" hidden>
+    <div class="loading-modal-backdrop" data-loading-close></div>
+    <section class="loading-dialog" role="dialog" aria-modal="true" aria-labelledby="loadingTitle">
+      <div class="loading-head">
+        <h2 id="loadingTitle">กำลังโหลดข้อมูล</h2>
+        <button id="loadingClose" class="loading-close" type="button" aria-label="ปิดหน้าต่าง">×</button>
+      </div>
+
+      <div class="loading-body">
+        <div class="loading-progress-bar" aria-hidden="true">
+          <div class="loading-progress-fill" id="loadingProgressFill" style="width:0%"></div>
+        </div>
+        <div class="loading-meta">
+          <span id="loadingPercent">0%</span>
+          <small id="loadingEstimate">คาดว่าเสร็จภายใน ~8 วินาที</small>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="target-modal" id="targetSettingsModal" hidden>
+    <div class="target-modal-backdrop" data-target-close></div>
+    <section class="target-dialog" role="dialog" aria-modal="true" aria-labelledby="targetSettingsTitle">
+      <div class="target-dialog-head">
+        <div>
+          <p class="panel-eyebrow">TARGET SETTINGS</p>
+          <h2 id="targetSettingsTitle">ตั้งค่า Target</h2>
+        </div>
+        <button id="targetSettingsClose" class="target-icon-btn" type="button"
+          aria-label="ปิดหน้าตั้งค่า Target">×</button>
+      </div>
+
+      <p class="target-dialog-desc">
+        เปลี่ยนค่า Target แล้ว Dashboard จะคำนวณสี สถานะ และคำสรุปใหม่ทันทีในเครื่องนี้
+      </p>
+
+      <form id="targetSettingsForm" class="target-form">
+        <label class="target-field">
+          <span>Overall / Shift / BU</span>
+          <input type="number" min="1" step="1" data-target-input="overall" inputmode="numeric">
+        </label>
+        <label class="target-field">
+          <span>Full Rack</span>
+          <input type="number" min="1" step="1" data-target-input="fullRack" inputmode="numeric">
+        </label>
+        <label class="target-field">
+          <span>Half Rack</span>
+          <input type="number" min="1" step="1" data-target-input="halfRack" inputmode="numeric">
+        </label>
+        <label class="target-field">
+          <span>EA</span>
+          <input type="number" min="1" step="1" data-target-input="ea" inputmode="numeric">
+        </label>
+        <label class="target-field">
+          <span>Pick to Sort</span>
+          <input type="number" min="1" step="1" data-target-input="pickToSort" inputmode="numeric">
+        </label>
+        <label class="target-field">
+          <span>Training</span>
+          <input type="number" min="1" step="1" data-target-input="training" inputmode="numeric">
+        </label>
+        <div class="target-form-note">
+          Zone จะใช้ Target ตามประเภท Rack / EA, Pick to Sort ใช้ Target แยก และ Training ใช้ Target ของ Training โดยตรง
+        </div>
+
+        <div class="target-dialog-actions">
+          <button id="targetSettingsReset" class="btn-target-secondary" type="button">กลับค่าเริ่มต้น</button>
+          <button class="btn-target-primary" type="submit">บันทึก Target</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <script src="script.js?v=pick-to-sort-total-pick-v63-20260611"></script>
+  <script>
+    // ===== TAB SWITCHING =====
+    document.querySelectorAll('.nav-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        const panel = document.getElementById('tab-' + tab);
+        if (panel) panel.classList.add('active');
+      });
+    });
+  </script>
+</body>
+
+</html>
