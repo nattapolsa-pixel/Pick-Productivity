@@ -136,7 +136,7 @@
                 <circle cx="12" cy="7" r="1.3" fill="currentColor" opacity=".55" />
               </svg>
             </span>
-            <span class="nav-label">Pickers</span>
+            <span class="nav-label">Staff & Training</span>
           </button>
         </li>
 
@@ -175,21 +175,7 @@
                 <rect x="1" y="11" width="14" height="2.5" rx="1" fill="currentColor" opacity=".3" />
               </svg>
             </span>
-            <span class="nav-label">Type & Zone</span>
-          </button>
-        </li>
-
-        <li>
-          <button class="nav-item" data-tab="pick-to-sort">
-            <span class="nav-icon">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M2 4h7.5c1.7 0 3 1.3 3 3s-1.3 3-3 3H5" stroke="currentColor" stroke-width="1.5"
-                  stroke-linecap="round" />
-                <path d="M5.5 2.2 2 4l3.5 1.8M5 8.2 2 10l3 1.8" stroke="currentColor" stroke-width="1.4"
-                  stroke-linecap="round" stroke-linejoin="round" opacity=".7" />
-              </svg>
-            </span>
-            <span class="nav-label">Pick to Sort</span>
+            <span class="nav-label">Work Breakdown</span>
           </button>
         </li>
 
@@ -201,32 +187,7 @@
                 <path d="M8 4.5V8l3 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
               </svg>
             </span>
-            <span class="nav-label">Shift</span>
-          </button>
-        </li>
-
-        <li>
-          <button class="nav-item" data-tab="training">
-            <span class="nav-icon">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M2 12l3-4 3 2 3-5 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                  stroke-linejoin="round" opacity=".8" />
-              </svg>
-            </span>
-            <span class="nav-label">Training</span>
-          </button>
-        </li>
-
-        <li>
-          <button class="nav-item" data-tab="bu">
-            <span class="nav-icon">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <rect x="2" y="8" width="4" height="6" rx="1" fill="currentColor" opacity=".8" />
-                <rect x="7" y="4" width="4" height="10" rx="1" fill="currentColor" opacity=".5" />
-                <rect x="12" y="1" width="2" height="13" rx="1" fill="currentColor" opacity=".3" />
-              </svg>
-            </span>
-            <span class="nav-label">BU</span>
+            <span class="nav-label">Shift & BU</span>
           </button>
         </li>
 
@@ -488,16 +449,54 @@
 
       <!-- TAB: PICKERS -->
       <section class="tab-panel" id="tab-pickers">
-        <div class="panel-header picker-panel-header">
+        <div class="panel-header picker-panel-header" style="margin-bottom: 2rem;">
           <div>
-            <p class="panel-eyebrow">PICKER RANKING</p>
-            <h1 class="panel-title">Top Pick / Bottom Pick รายคน</h1>
+            <p class="panel-eyebrow">STAFF & TRAINING PERFORMANCE</p>
+            <h1 class="panel-title">ข้อมูลรายบุคคล & ผลการฝึกงาน (Staff & Training)</h1>
           </div>
-          <p class="panel-desc">จัดอันดับจาก Average Pick/Hr Column AF ตามช่วงวันที่ที่เลือก
-            ใช้ดูคนที่ทำได้ดีและคนที่ควรติดตามก่อน</p>
+          <p class="panel-desc">ติดตามประสิทธิผลการทำงานรายบุคคล การจัดอันดับ Top/Bottom Pick และการฝึกงานของพนักงานใหม่</p>
         </div>
 
-        <div class="picker-grid" id="pickerGrid" aria-label="Top Pick and Bottom Pick ranking"></div>
+        <!-- SECTION: PICKER RANKING -->
+        <div class="picker-ranking-section" style="margin-bottom: 3.5rem;">
+          <h2 style="font-size: 1.15rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">จัดอันดับพนักงาน (Picker Ranking)</h2>
+          <p class="panel-desc" style="margin-bottom: 1.25rem;">จัดอันดับจาก Average Pick/Hr Column AF ตามช่วงวันที่ที่เลือก ใช้ดูคนที่ทำได้ดีและคนที่ควรติดตามก่อน</p>
+          <div class="picker-grid" id="pickerGrid" aria-label="Top Pick and Bottom Pick ranking"></div>
+        </div>
+
+        <!-- SECTION: TRAINING DEEP DIVE -->
+        <div class="training-section" style="border-top: 1px solid var(--border-subtle); padding-top: 2rem; margin-bottom: 1.5rem;">
+          <h2 style="font-size: 1.15rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">พนักงานฝึกหัด (Training Deep Dive)</h2>
+          <p class="panel-desc" style="margin-bottom: 1.25rem;">ข้อมูลพนักงานใหม่ช่วงเริ่มงานถึง 2 เดือน · วันที่เริ่ม H / วันสิ้นสุด M · ค่าเฉลี่ยจาก Column AF</p>
+          
+          <div class="training-summary-grid" id="trainingSummaryGrid" aria-label="Training summary" style="margin-bottom: 2rem;"></div>
+
+          <div class="training-insight-layout" style="margin-bottom: 2rem;">
+            <article class="training-insight-card">
+              <div class="training-insight-head">
+                <div>
+                  <p class="visual-card-eyebrow">TREND SUMMARY</p>
+                  <h2 class="visual-card-title">ภาพรวมผล Training</h2>
+                </div>
+                <span class="status-pill muted">H → M</span>
+              </div>
+              <div class="training-stack" id="trainingTrendChart"></div>
+            </article>
+
+            <article class="training-insight-card">
+              <div class="training-insight-head">
+                <div>
+                  <p class="visual-card-eyebrow">FOCUS LIST</p>
+                  <h2 class="visual-card-title">คนที่ควรดูต่อก่อน</h2>
+                </div>
+                <span class="status-pill muted">Top 6</span>
+              </div>
+              <div class="training-focus-list" id="trainingFocusList"></div>
+            </article>
+          </div>
+
+          <div class="training-grid" id="trainingGrid" aria-label="Training Productivity"></div>
+        </div>
       </section>
 
       <!-- TAB: AFFILIATION -->
@@ -699,101 +698,61 @@
       <section class="tab-panel" id="tab-rack">
         <div class="panel-header" style="margin-bottom: 2rem;">
           <div>
-            <p class="panel-eyebrow">BREAKDOWN & POSITION</p>
-            <h1 class="panel-title">Work Type & Zone Breakdown</h1>
+            <p class="panel-eyebrow">WORK BREAKDOWN</p>
+            <h1 class="panel-title">ประเภทงาน & โซน (Work Breakdown)</h1>
           </div>
-          <p class="panel-desc">วิเคราะห์ประสิทธิภาพการทำงานแยกตามประเภทงาน (Work Type) และตำแหน่งพื้นที่ทำงาน (Zone)</p>
+          <p class="panel-desc">วิเคราะห์ข้อมูลเจาะลึกแยกตามประเภทงานการหยิบ (Work Type), พื้นที่จัดเก็บ (Zone) และการหยิบแยกจ่าย (Pick to Sort)</p>
         </div>
 
         <!-- SECTION: WORK TYPE -->
         <div class="type-section" style="margin-bottom: 3.5rem;">
           <h2 style="font-size: 1.15rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">ประเภทงาน (Work Type)</h2>
-          <p class="panel-desc" style="margin-bottom: 1.25rem;">Main KPI Target: Full Rack 37% / Half Rack 48% / EA 15% · Pick to Sort จาก Column AK เริ่มนับ 8/6/2026</p>
+          <p class="panel-desc" style="margin-bottom: 1.25rem;">Main KPI Target: Full Rack 37% / Half Rack 48% / EA 15%</p>
           <div class="category-grid" id="categoryGrid" aria-label="Category KPI"></div>
+        </div>
+
+        <!-- SECTION: PICK TO SORT -->
+        <div class="pick-to-sort-section" style="border-top: 1px solid var(--border-subtle); padding-top: 2rem; margin-bottom: 3.5rem;">
+          <h2 style="font-size: 1.15rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">การหยิบแยกจ่าย (Pick to Sort)</h2>
+          <p class="panel-desc" style="margin-bottom: 1.25rem;">วิเคราะห์ความเร็วการหยิบแยกจ่ายแบบกระเช้าและกล่อง (จาก Column AK เริ่มนับ 8/6/2026)</p>
+          <div class="pick-to-sort-dashboard" id="pickToSortGrid" aria-label="Pick to Sort dashboard"></div>
         </div>
 
         <!-- SECTION: ZONE -->
         <div class="zone-section" style="border-top: 1px solid var(--border-subtle); padding-top: 2rem; margin-bottom: 1.5rem;">
           <h2 style="font-size: 1.15rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">ตำแหน่งพื้นที่ทำงาน (Zone)</h2>
-          <p class="panel-desc" style="margin-bottom: 1.25rem;">Zone EA มี Weight: EA-FA 85% / HA-HB 0% / YA 15% (Column AH)</p>
+          <p class="panel-desc" style="margin-bottom: 1.25rem;">คำนวณถ่วงน้ำหนักโดยตำแหน่ง Zone EA มีน้ำหนัก: EA-FA 85% / HA-HB 0% / YA 15% (จาก Column AH)</p>
           <div class="zone-grid" id="zoneBreakdownGrid" aria-label="Zone KPI"></div>
         </div>
       </section>
 
-      <!-- TAB: PICK TO SORT -->
-      <section class="tab-panel" id="tab-pick-to-sort">
-        <div class="panel-header">
-          <div>
-            <p class="panel-eyebrow">PICK TO SORT FOCUS</p>
-            <h1 class="panel-title">Productivity Pick to Sort</h1>
-          </div>
-          <p class="panel-desc">ใช้ Pick Type จาก Column AK · เริ่มคำนวณตั้งแต่ 8/6/2026 · ค่าเฉลี่ยจาก Column AF</p>
-        </div>
-        <div class="pick-to-sort-dashboard" id="pickToSortGrid" aria-label="Pick to Sort dashboard"></div>
-      </section>
 
       <!-- TAB: SHIFT -->
       <section class="tab-panel" id="tab-shift">
-        <div class="panel-header">
+        <div class="panel-header" style="margin-bottom: 2rem;">
           <div>
-            <p class="panel-eyebrow">SHIFT BREAKDOWN</p>
-            <h1 class="panel-title">Productivity แยกตามกะ</h1>
+            <p class="panel-eyebrow">SHIFT & BU BREAKDOWN</p>
+            <h1 class="panel-title">ประสิทธิภาพกะ & BU (Shift & BU)</h1>
           </div>
-          <p class="panel-desc">แตกสังกัดจาก Column AI · ใช้ค่า Average Pick/Hr จาก Column AF</p>
+          <p class="panel-desc">เปรียบเทียบ Productivity และประสิทธิผลการทำงานแยกตามรอบเวลากะทำงาน (Shift) และประเภทกลุ่มธุรกิจ (BU)</p>
         </div>
-        <div class="shift-grid" id="shiftGrid" aria-label="Shift KPI"></div>
+
+        <!-- SECTION: SHIFT -->
+        <div class="shift-section" style="margin-bottom: 3.5rem;">
+          <h2 style="font-size: 1.15rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">กะการทำงาน (Shift)</h2>
+          <p class="panel-desc" style="margin-bottom: 1.25rem;">คำนวณ Productivity และอัตราเฉลี่ยแยกกะทำงาน (Day / Night จากการแตกกลุ่มสังกัด Column AI)</p>
+          <div class="shift-grid" id="shiftGrid" aria-label="Shift KPI"></div>
+        </div>
+
+        <!-- SECTION: BU -->
+        <div class="bu-section" style="border-top: 1px solid var(--border-subtle); padding-top: 2rem; margin-bottom: 1.5rem;">
+          <h2 style="font-size: 1.15rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">กลุ่มธุรกิจ (Business Unit)</h2>
+          <p class="panel-desc" style="margin-bottom: 1.25rem;">เปรียบเทียบสัดส่วนระหว่าง Punthai (51/49/0) และ Mart (40/50/10) ตามประเภท Full Rack / Half Rack / EA (Column AJ)</p>
+          <div class="bu-grid" id="buGrid" aria-label="BU KPI"></div>
+        </div>
       </section>
 
-      <!-- TAB: TRAINING -->
-      <section class="tab-panel" id="tab-training">
-        <div class="panel-header">
-          <div>
-            <p class="panel-eyebrow">TRAINING DEEP DIVE</p>
-            <h1 class="panel-title">Productivity Training</h1>
-          </div>
-          <p class="panel-desc">วันเริ่มงานถึง 2 เดือน · Column D = Update name Column B · วันที่เริ่ม H / วันสิ้นสุด M
-          </p>
-        </div>
-        <div class="training-summary-grid" id="trainingSummaryGrid" aria-label="Training summary"></div>
 
-        <div class="training-insight-layout">
-          <article class="training-insight-card">
-            <div class="training-insight-head">
-              <div>
-                <p class="visual-card-eyebrow">TREND SUMMARY</p>
-                <h2 class="visual-card-title">ภาพรวมผล Training</h2>
-              </div>
-              <span class="status-pill muted">H → M</span>
-            </div>
-            <div class="training-stack" id="trainingTrendChart"></div>
-          </article>
-
-          <article class="training-insight-card">
-            <div class="training-insight-head">
-              <div>
-                <p class="visual-card-eyebrow">FOCUS LIST</p>
-                <h2 class="visual-card-title">คนที่ควรดูต่อก่อน</h2>
-              </div>
-              <span class="status-pill muted">Top 6</span>
-            </div>
-            <div class="training-focus-list" id="trainingFocusList"></div>
-          </article>
-        </div>
-
-        <div class="training-grid" id="trainingGrid" aria-label="Training Productivity"></div>
-      </section>
-
-      <!-- TAB: BU -->
-      <section class="tab-panel" id="tab-bu">
-        <div class="panel-header">
-          <div>
-            <p class="panel-eyebrow">BU FOCUS</p>
-            <h1 class="panel-title">Productivity แยกตาม BU</h1>
-          </div>
-          <p class="panel-desc">Punthai 51/49/0 · Mart 40/50/10 · แยก Full Rack / Half Rack / EA (Column AJ)</p>
-        </div>
-        <div class="bu-grid" id="buGrid" aria-label="BU KPI"></div>
-      </section>
 
 
     </main>

@@ -3611,6 +3611,18 @@ body.loading-open { overflow: hidden; }
   box-shadow: var(--shadow-soft);
 }
 
+:root.light .btn-target {
+  color: #1A6CF6;
+  background: linear-gradient(135deg, rgba(26, 108, 246, 0.08), rgba(20, 184, 166, 0.06));
+  border-color: rgba(26, 108, 246, 0.3);
+}
+
+:root.light .btn-target:hover {
+  background: linear-gradient(135deg, rgba(26, 108, 246, 0.14), rgba(20, 184, 166, 0.1));
+  border-color: rgba(20, 184, 166, 0.6);
+  color: #0F766E;
+}
+
 :root.light .active-date-banner.is-fallback {
   background: linear-gradient(135deg, rgba(220,38,38,.10), #FFFFFF);
 }
