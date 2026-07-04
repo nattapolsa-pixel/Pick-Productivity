@@ -69,6 +69,8 @@ function readStoredTargets() {
 }
 
 const TARGETS = readStoredTargets();
+let currentMonthlyChartMode = "affiliation";
+
 
 function shouldCountPickTypeOnDate(key, dateKey) {
   if (key !== "pickToSort") {
@@ -1470,7 +1472,9 @@ function getMonthlyAggregates() {
         totalPick: 0,
         activeDays: 0,
         transactions: 0,
-        affiliations: {}
+        affiliations: {},
+        categories: {},
+        bu: {}
       };
     }
 
@@ -1515,6 +1519,32 @@ function getMonthlyAggregates() {
         });
       });
     }
+
+    // Aggregate Categories (Work Type)
+    const rawCategories = dateData.categories || {};
+    Object.keys(rawCategories).forEach((catKey) => {
+      const bucket = rawCategories[catKey] || {};
+      if (bucket.count > 0) {
+        if (!monthsData[monthKey].categories[catKey]) {
+          monthsData[monthKey].categories[catKey] = { sum: 0, count: 0 };
+        }
+        monthsData[monthKey].categories[catKey].sum += bucket.sum || 0;
+        monthsData[monthKey].categories[catKey].count += bucket.count || 0;
+      }
+    });
+
+    // Aggregate BU (Business Unit)
+    const rawBu = dateData.bu || {};
+    Object.keys(rawBu).forEach((buKey) => {
+      const bucket = rawBu[buKey] || {};
+      if (bucket.count > 0) {
+        if (!monthsData[monthKey].bu[buKey]) {
+          monthsData[monthKey].bu[buKey] = { sum: 0, count: 0 };
+        }
+        monthsData[monthKey].bu[buKey].sum += bucket.sum || 0;
+        monthsData[monthKey].bu[buKey].count += bucket.count || 0;
+      }
+    });
   });
 
   return Object.keys(monthsData)
@@ -1549,6 +1579,39 @@ function getMonthlyAggregates() {
         };
       }).sort((left, right) => left.name.localeCompare(right.name, "th"));
 
+      const categoryList = Object.keys(data.categories || {}).map((name) => {
+        const c = data.categories[name];
+        const avg = c.count > 0 ? c.sum / c.count : 0;
+        let displayName = name;
+        if (name === "fullRack") displayName = "Full Rack";
+        else if (name === "halfRack") displayName = "Half Rack";
+        else if (name === "ea") displayName = "EA";
+        else if (name === "pickToSort") displayName = "Pick to Sort";
+        
+        return {
+          name: displayName,
+          key: name,
+          average: round1(avg),
+          rawAverage: avg,
+          count: c.count
+        };
+      }).sort((left, right) => left.name.localeCompare(right.name, "th"));
+
+      const buList = Object.keys(data.bu || {}).map((name) => {
+        const b = data.bu[name];
+        const avg = b.count > 0 ? b.sum / b.count : 0;
+        const config = BU_GROUPS.find(g => g.key === name);
+        const displayName = config ? (config.label || config.title) : name;
+        
+        return {
+          name: displayName,
+          key: name,
+          average: round1(avg),
+          rawAverage: avg,
+          count: b.count
+        };
+      }).sort((left, right) => left.name.localeCompare(right.name, "th"));
+
       return {
         monthKey,
         year: parseInt(year, 10),
@@ -1561,7 +1624,9 @@ function getMonthlyAggregates() {
         labelThai: `${thaiMonthNames[monthIndex]} ${parseInt(year, 10) + 543}`,
         labelThaiShort: `${thaiShortMonthNames[monthIndex]} ${String(parseInt(year, 10) + 543).slice(2)}`,
         labelEngShort: engMonthNames[monthIndex],
-        affiliations: affList
+        affiliations: affList,
+        categories: categoryList,
+        bu: buList
       };
     });
 }
@@ -1575,7 +1640,7 @@ const AFFILIATION_COLORS = [
   { stroke: "#EC4899", gradStart: "#EC4899", name: "pink" }
 ];
 
-function buildYearlyProductivitySvg(monthsData, metricLabel) {
+function buildYearlyProductivitySvg(monthsData, metricLabel, displayMode = "affiliation") {
   if (monthsData.length === 0) {
     return `<div class="monthly-productivity-empty">ยังไม่มีข้อมูล Productivity รายเดือน</div>`;
   }
@@ -1586,18 +1651,26 @@ function buildYearlyProductivitySvg(monthsData, metricLabel) {
   const plotWidth = width - pad.left - pad.right;
   const plotHeight = height - pad.top - pad.bottom;
   
+  let itemsKey = "affiliations";
+  if (displayMode === "work") {
+    itemsKey = "categories";
+  } else if (displayMode === "bu") {
+    itemsKey = "bu";
+  }
+  
   const values = [];
-  const distinctAffiliations = [];
+  const distinctItems = [];
   monthsData.forEach((d) => {
     values.push(d.average);
-    (d.affiliations || []).forEach((aff) => {
-      values.push(aff.average);
-      if (!distinctAffiliations.includes(aff.name)) {
-        distinctAffiliations.push(aff.name);
+    const items = d[itemsKey] || [];
+    items.forEach((item) => {
+      values.push(item.average);
+      if (!distinctItems.includes(item.name)) {
+        distinctItems.push(item.name);
       }
     });
   });
-  distinctAffiliations.sort((left, right) => left.localeCompare(right, "th"));
+  distinctItems.sort((left, right) => left.localeCompare(right, "th"));
   
   const maxValue = Math.max(...values, TARGETS.overall, 1);
   const scaleMax = Math.ceil((maxValue * 1.12) / 10) * 10;
@@ -1633,18 +1706,19 @@ function buildYearlyProductivitySvg(monthsData, metricLabel) {
   }).join("");
 
   let bars = "";
-  const m = distinctAffiliations.length;
+  const m = distinctItems.length;
   
   const monthlyTooltips = monthsData.map((d) => {
     const isOverallGood = d.average >= TARGETS.overall;
     const overallValStr = `${formatProductivityValue(d.average)} ${metricLabel}`;
     const overallTrend = isOverallGood ? "up" : "down";
     
-    const affLines = distinctAffiliations.map((affName, k) => {
+    const itemLines = distinctItems.map((itemName, k) => {
       const colorObj = AFFILIATION_COLORS[k % AFFILIATION_COLORS.length];
-      const aff = (d.affiliations || []).find(a => a.name === affName);
-      const affAvg = aff && aff.count > 0 ? aff.average : 0;
-      const countVal = aff && aff.count > 0 ? aff.count : 0;
+      const items = d[itemsKey] || [];
+      const item = items.find(a => a.name === itemName);
+      const itemAvg = item && item.count > 0 ? item.average : 0;
+      const countVal = item && item.count > 0 ? item.count : 0;
       
       if (countVal === 0) return "";
       
@@ -1652,17 +1726,17 @@ function buildYearlyProductivitySvg(monthsData, metricLabel) {
         <div style="display:flex; align-items:center; justify-content:space-between; gap:1.2rem; font-size:0.72rem; line-height:1.45; color:rgba(255,255,255,0.85); margin-bottom: 0.15rem;">
           <div style="display:flex; align-items:center; gap:0.35rem;">
             <span style="width:7px; height:7px; border-radius:1px; background:${colorObj.stroke}; display:inline-block;"></span>
-            <span>${escapeHtml(affName)}</span>
+            <span>${escapeHtml(itemName)}</span>
           </div>
-          <strong>${formatProductivityValue(affAvg)} Pick/Hr</strong>
+          <strong>${formatProductivityValue(itemAvg)} Pick/Hr</strong>
         </div>
       `;
     }).filter(line => line !== "").join("");
 
-    const detailHtml = affLines ? `
+    const detailHtml = itemLines ? `
       <div style="margin-top:0.45rem; border-top:1px solid rgba(255,255,255,0.18); padding-top:0.45rem; min-width: 170px;">
-        <div style="font-size:0.68rem; text-transform:uppercase; color:rgba(255,255,255,0.5); font-weight:700; margin-bottom:0.30rem; letter-spacing:0.02em;">แยกตามสังกัด (Breakdown)</div>
-        ${affLines}
+        <div style="font-size:0.68rem; text-transform:uppercase; color:rgba(255,255,255,0.5); font-weight:700; margin-bottom:0.30rem; letter-spacing:0.02em;">แยกตามรายละเอียด (Breakdown)</div>
+        ${itemLines}
       </div>
     ` : "";
 
@@ -1677,18 +1751,25 @@ function buildYearlyProductivitySvg(monthsData, metricLabel) {
   if (m > 0) {
     const groupBars = [];
     monthsData.forEach((d, index) => {
-      const groupWidth = Math.min(65, step * 0.75);
-      const subBarWidth = groupWidth / m;
-      const groupStartX = pad.left + (index * step) - (groupWidth / 2);
+      const barWidth = Math.min(36, step * 0.4);
+      const x = pad.left + (index * step) - (barWidth / 2);
       const tooltip = monthlyTooltips[index];
+      
+      const totalCount = d.transactions;
+      let cumulativeValue = 0;
 
-      distinctAffiliations.forEach((affName, k) => {
-        const aff = (d.affiliations || []).find(a => a.name === affName);
-        if (!aff || aff.count === 0) return;
+      distinctItems.forEach((itemName, k) => {
+        const items = d[itemsKey] || [];
+        const item = items.find(a => a.name === itemName);
+        if (!item || item.count === 0) return;
 
-        const x = groupStartX + (k * subBarWidth);
-        const y = yOf(aff.average);
-        const barHeight = Math.max(2, plotHeight - (y - pad.top));
+        // Calculate weighted average contribution: average * (count / total_transactions)
+        const weight = totalCount > 0 ? item.count / totalCount : 0;
+        const val = item.rawAverage * weight;
+        
+        const yStart = yOf(cumulativeValue);
+        const yEnd = yOf(cumulativeValue + val);
+        const barHeight = Math.max(1, yStart - yEnd);
         const colorObj = AFFILIATION_COLORS[k % AFFILIATION_COLORS.length];
 
         groupBars.push(`
@@ -1697,10 +1778,12 @@ function buildYearlyProductivitySvg(monthsData, metricLabel) {
              data-tooltip-value="${escapeHtml(tooltip.value)}"
              data-tooltip-detail="${escapeHtml(tooltip.detail)}"
              data-tooltip-trend="${escapeHtml(tooltip.trend)}">
-            <rect class="monthly-chart-bar" x="${x}" y="${y}" width="${subBarWidth - 1}" height="${barHeight}" style="fill: url(#affCompGradYearly_${k}); opacity: 0.90;" rx="2" ry="2" />
-            <rect x="${x}" y="${y}" width="${subBarWidth - 1}" height="${Math.min(2, barHeight)}" fill="${colorObj.stroke}" style="opacity: 0.95;" />
+            <rect class="monthly-chart-bar" x="${x}" y="${yEnd}" width="${barWidth}" height="${barHeight}" style="fill: url(#affCompGradYearly_${k}); opacity: 0.90;" />
+            <line x1="${x}" y1="${yEnd}" x2="${x + barWidth}" y2="${yEnd}" stroke="${colorObj.stroke}" stroke-width="0.75" style="opacity: 0.8;" />
           </g>
         `);
+
+        cumulativeValue += val;
       });
     });
     bars = groupBars.join("");
@@ -1755,7 +1838,7 @@ function buildYearlyProductivitySvg(monthsData, metricLabel) {
     return `<text class="monthly-chart-date" x="${x}" y="${height - 24}" text-anchor="middle" fill="var(--text-secondary)" style="font-family: var(--font-body); font-size: 11px;">${escapeHtml(d.labelEngShort)}</text>`;
   }).join("");
 
-  const dynamicGradients = distinctAffiliations.map((affName, k) => {
+  const dynamicGradients = distinctItems.map((itemName, k) => {
     const colorObj = AFFILIATION_COLORS[k % AFFILIATION_COLORS.length];
     return `
       <linearGradient id="affCompGradYearly_${k}" x1="0" y1="0" x2="0" y2="1">
@@ -1789,7 +1872,7 @@ function buildYearlyProductivitySvg(monthsData, metricLabel) {
         </linearGradient>
         
         ${dynamicGradients}
-
+ 
         <!-- Drop shadow for the trend line -->
         <filter id="lineShadowYearly" x="-10%" y="-10%" width="120%" height="120%">
           <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#000" flood-opacity="0.3"/>
@@ -1825,12 +1908,12 @@ function buildYearlyProductivitySvg(monthsData, metricLabel) {
     </svg>
   `;
 
-  const legendHtml = distinctAffiliations.map((affName, k) => {
+  const legendHtml = distinctItems.map((itemName, k) => {
     const colorObj = AFFILIATION_COLORS[k % AFFILIATION_COLORS.length];
     return `
       <div style="display:flex; align-items:center; gap:0.35rem; font-size:0.75rem; color:var(--text-secondary);">
         <span style="width:10px; height:10px; border-radius:2px; background:${colorObj.stroke}; display:inline-block;"></span>
-        <strong>${escapeHtml(affName)}</strong>
+        <strong>${escapeHtml(itemName)}</strong>
       </div>
     `;
   }).join("");
@@ -1929,8 +2012,25 @@ function renderMonthlyTab(payload) {
     `).join("");
   }
 
-  chartContainer.innerHTML = buildYearlyProductivitySvg(monthsData, "Avg Pick/Hr");
+  chartContainer.innerHTML = buildYearlyProductivitySvg(monthsData, "Avg Pick/Hr", currentMonthlyChartMode);
   setupChartTooltips();
+
+  const btnAff = document.querySelector("#monthlyChartTabAffiliation");
+  const btnWork = document.querySelector("#monthlyChartTabWork");
+  const btnBu = document.querySelector("#monthlyChartTabBu");
+  if (btnAff && btnWork && btnBu) {
+    btnAff.classList.remove("active");
+    btnWork.classList.remove("active");
+    btnBu.classList.remove("active");
+    
+    if (currentMonthlyChartMode === "work") {
+      btnWork.classList.add("active");
+    } else if (currentMonthlyChartMode === "bu") {
+      btnBu.classList.add("active");
+    } else {
+      btnAff.classList.add("active");
+    }
+  }
 
   // MONTHLY PRESENTATION / EXECUTIVE BRIEFING GENERATION
   const monthlyPresentBriefing = document.querySelector("#monthlyPresentBriefing");
@@ -1979,30 +2079,33 @@ function renderMonthlyTab(payload) {
       
       MoM_Sentence = `เทียบกับเดือนก่อนหน้า (${prevMonth.labelThaiShort}) มีอัตราการเปลี่ยนแปลงผลผลิตเฉลี่ย ${trendDirection} <strong>${formatProductivityValue(Math.abs(trendPct))}%</strong> (${delta > 0 ? "▲ +" : "▼ "}${formatProductivityValue(delta)} Pick/Hr)`;
 
-      const latestAffList = latestMonth.affiliations || [];
-      const prevAffList = prevMonth.affiliations || [];
-      const affDeltas = [];
+      const itemsKey = currentMonthlyChartMode === "work" ? "categories" : (currentMonthlyChartMode === "bu" ? "bu" : "affiliations");
+      const modeLabel = currentMonthlyChartMode === "work" ? "ประเภทงาน" : (currentMonthlyChartMode === "bu" ? "BU" : "สังกัด");
 
-      latestAffList.forEach((la) => {
-        const pa = prevAffList.find(p => p.name === la.name);
-        if (pa && pa.count > 0 && la.count > 0) {
-          const affDelta = la.average - pa.average;
-          const affPct = pa.average > 0 ? (affDelta / pa.average) * 100 : 0;
-          affDeltas.push({ name: la.name, delta: affDelta, pct: affPct });
+      const latestItemList = latestMonth[itemsKey] || [];
+      const prevItemList = prevMonth[itemsKey] || [];
+      const itemDeltas = [];
+
+      latestItemList.forEach((li) => {
+        const pi = prevItemList.find(p => p.name === li.name);
+        if (pi && pi.count > 0 && li.count > 0) {
+          const itemDelta = li.average - pi.average;
+          const itemPct = pi.average > 0 ? (itemDelta / pi.average) * 100 : 0;
+          itemDeltas.push({ name: li.name, delta: itemDelta, pct: itemPct });
         }
       });
 
-      if (affDeltas.length > 0) {
-        const sortedAffs = [...affDeltas].sort((a, b) => b.delta - a.delta);
-        const bestAff = sortedAffs[0];
-        const worstAff = sortedAffs[sortedAffs.length - 1];
+      if (itemDeltas.length > 0) {
+        const sortedItems = [...itemDeltas].sort((a, b) => b.delta - a.delta);
+        const bestItem = sortedItems[0];
+        const worstItem = sortedItems[sortedItems.length - 1];
 
-        if (bestAff && bestAff.delta > 0) {
-          highlights.push(`<strong>สังกัดพัฒนาการดีเด่น</strong>: สังกัด <strong>${bestAff.name}</strong> เติบโตดีที่สุดรายเดือน เพิ่มขึ้น <strong>+${formatProductivityValue(bestAff.delta)} Pick/Hr</strong> (+${formatProductivityValue(bestAff.pct)}%)`);
+        if (bestItem && bestItem.delta > 0) {
+          highlights.push(`<strong>${modeLabel}พัฒนาการดีเด่น</strong>: <strong>${bestItem.name}</strong> เติบโตดีที่สุดรายเดือน เพิ่มขึ้น <strong>+${formatProductivityValue(bestItem.delta)} Pick/Hr</strong> (+${formatProductivityValue(bestItem.pct)}%)`);
         }
-        if (worstAff && worstAff.delta < 0) {
-          risks.push(`<strong>สังกัดดิ่งลงรายเดือน</strong>: สังกัด <strong>${worstAff.name}</strong> ชะลอตัวลงมากที่สุด ลดลง <strong>${formatProductivityValue(worstAff.delta)} Pick/Hr</strong> (${formatProductivityValue(worstAff.pct)}%)`);
-          actions.push(`<strong>ทบทวนสังกัด ${worstAff.name} รายกะ</strong>: ตรวจสอบและพูดคุยปัญหาการทำงานร่วมกับสังกัด <strong>${worstAff.name}</strong> เพื่อหาสาเหตุที่แนวโน้มประสิทธิภาพตกลงเร่งด่วน`);
+        if (worstItem && worstItem.delta < 0) {
+          risks.push(`<strong>${modeLabel}ชะลอตัวลงรายเดือน</strong>: <strong>${worstItem.name}</strong> ลดลงมากที่สุดเฉลี่ย <strong>${formatProductivityValue(worstItem.delta)} Pick/Hr</strong> (${formatProductivityValue(worstItem.pct)}%)`);
+          actions.push(`<strong>ทบทวน ${modeLabel} ${worstItem.name}</strong>: ตรวจสอบและพูดคุยปัญหาการทำงานร่วมกับผู้จัดการเพื่อค้นหาสาเหตุที่ประสิทธิภาพของ <strong>${worstItem.name}</strong> ตกลงเร่งด่วน`);
         }
       }
     }
@@ -2027,21 +2130,69 @@ function renderMonthlyTab(payload) {
     monthlyPresentBriefing.style.display = "none";
   }
 
-  tableBody.innerHTML = monthsData.map((d) => {
-    const diff = d.average - TARGETS.overall;
-    const diffClass = diff >= 0 ? "is-good" : "is-warning";
-    const diffText = diff >= 0 ? `+${formatProductivityValue(diff)}` : `${formatProductivityValue(diff)}`;
-    
-    return `
+  const itemsKey = currentMonthlyChartMode === "work" ? "categories" : (currentMonthlyChartMode === "bu" ? "bu" : "affiliations");
+  const distinctNames = [];
+  monthsData.forEach((d) => {
+    const items = d[itemsKey] || [];
+    items.forEach((item) => {
+      if (item.count > 0 && !distinctNames.includes(item.name)) {
+        distinctNames.push(item.name);
+      }
+    });
+  });
+  distinctNames.sort((left, right) => left.localeCompare(right, "th"));
+
+  // Update dynamic monthly table headers
+  const tableHead = document.querySelector(".monthly-details-section table.data-table thead");
+  if (tableHead) {
+    let headerHtml = `
       <tr>
-        <td style="font-weight: 600; color: var(--text-primary);">${escapeHtml(d.labelThai)}</td>
-        <td style="font-family: var(--font-mono); font-weight: 600;">${formatProductivityValue(d.average)}</td>
-        <td class="${diffClass}" style="font-weight: 700;">${diffText}</td>
-        <td style="font-family: var(--font-mono);">${formatInteger(d.totalPick)}</td>
-        <td>${formatInteger(d.activeDays)} วัน</td>
-        <td style="font-family: var(--font-mono);">${formatInteger(d.transactions)}</td>
+        <th>เดือน</th>
+        <th style="text-align: right;">เฉลี่ยรวม (Pick/Hr)</th>
+    `;
+    distinctNames.forEach((name) => {
+      headerHtml += `<th style="text-align: right;">${escapeHtml(name)} Avg</th>`;
+    });
+    headerHtml += `
+        <th style="text-align: right;">ยอดหยิบรวม (Total Pick)</th>
+        <th style="text-align: right;">วันทำงาน</th>
+        <th style="text-align: right;">รายการรวม (Txns)</th>
       </tr>
     `;
+    tableHead.innerHTML = headerHtml;
+  }
+
+  // Update dynamic monthly table title
+  const monthlyTableTitle = document.querySelector("#monthlyTableTitle");
+  if (monthlyTableTitle) {
+    const modeText = currentMonthlyChartMode === "work" ? "แยกตามประเภทงาน" : (currentMonthlyChartMode === "bu" ? "แยกตาม BU" : "แยกตามสังกัด");
+    monthlyTableTitle.textContent = `รายละเอียดข้อมูลแต่ละเดือน (${modeText})`;
+  }
+
+  tableBody.innerHTML = monthsData.map((d) => {
+    let rowHtml = `
+      <tr>
+        <td style="font-weight: 600; color: var(--text-primary);">${escapeHtml(d.labelThai)}</td>
+        <td style="font-family: var(--font-mono); font-weight: 700; text-align: right; color: var(--text-primary);">${formatProductivityValue(d.average)}</td>
+    `;
+    
+    distinctNames.forEach((name) => {
+      const items = d[itemsKey] || [];
+      const item = items.find(a => a.name === name);
+      if (item && item.count > 0) {
+        rowHtml += `<td style="font-family: var(--font-mono); text-align: right; font-weight: 600;">${formatProductivityValue(item.average)}</td>`;
+      } else {
+        rowHtml += `<td style="color: var(--text-muted); text-align: center; font-size: 0.8rem;">—</td>`;
+      }
+    });
+
+    rowHtml += `
+        <td style="font-family: var(--font-mono); text-align: right;">${formatInteger(d.totalPick)}</td>
+        <td style="text-align: right;">${formatInteger(d.activeDays)} วัน</td>
+        <td style="font-family: var(--font-mono); text-align: right;">${formatInteger(d.transactions)}</td>
+      </tr>
+    `;
+    return rowHtml;
   }).join("");
 }
 
@@ -5474,6 +5625,25 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {
     loadDashboard({ silent: true });
   }
+});
+
+// Toggle monthly chart modes
+document.querySelector("#monthlyChartTabAffiliation")?.addEventListener("click", () => {
+  if (currentMonthlyChartMode === "affiliation") return;
+  currentMonthlyChartMode = "affiliation";
+  if (lastRenderedPayload) renderMonthlyTab(lastRenderedPayload);
+});
+
+document.querySelector("#monthlyChartTabWork")?.addEventListener("click", () => {
+  if (currentMonthlyChartMode === "work") return;
+  currentMonthlyChartMode = "work";
+  if (lastRenderedPayload) renderMonthlyTab(lastRenderedPayload);
+});
+
+document.querySelector("#monthlyChartTabBu")?.addEventListener("click", () => {
+  if (currentMonthlyChartMode === "bu") return;
+  currentMonthlyChartMode = "bu";
+  if (lastRenderedPayload) renderMonthlyTab(lastRenderedPayload);
 });
 
 initializeTargetSettings();
