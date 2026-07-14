@@ -1655,6 +1655,96 @@ body.target-modal-open { overflow: hidden; }
   margin-top: 1rem;
 }
 
+.tenured-shift-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(360px, .85fr);
+  gap: 1rem;
+  margin: 1rem 0 1.25rem;
+}
+
+.tenured-shift-card,
+.tenured-shift-table-card {
+  min-width: 0;
+}
+
+.tenured-shift-chart {
+  display: grid;
+  gap: .8rem;
+}
+
+.tenured-shift-row {
+  display: grid;
+  gap: .45rem;
+  padding: .8rem .85rem;
+  border: 1px solid var(--border-subtle);
+  border-left: 4px solid var(--blue);
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,.025);
+}
+
+.tenured-shift-row.is-good {
+  border-left-color: var(--good);
+}
+
+.tenured-shift-row.is-warning,
+.tenured-shift-row.is-empty {
+  border-left-color: var(--warn);
+}
+
+.tenured-shift-row-head,
+.tenured-shift-row-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  flex-wrap: wrap;
+}
+
+.tenured-shift-row-head strong {
+  color: var(--text-primary);
+  font-size: .96rem;
+}
+
+.tenured-shift-row-head span,
+.tenured-shift-row-foot span {
+  color: var(--text-secondary);
+  font-size: .78rem;
+}
+
+.tenured-shift-track {
+  position: relative;
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(148,163,184,.14);
+}
+
+.tenured-shift-track i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--blue), #14B8A6);
+}
+
+.tenured-shift-row.is-warning .tenured-shift-track i,
+.tenured-shift-row.is-empty .tenured-shift-track i {
+  background: linear-gradient(90deg, var(--warn), #EF4444);
+}
+
+.tenured-shift-track em {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.75);
+  box-shadow: 0 0 10px rgba(255,255,255,.35);
+}
+
+.tenured-shift-table {
+  min-width: 660px;
+}
+
 .training-detail-table-card {
   margin-top: 1.25rem;
 }
@@ -2110,6 +2200,7 @@ body.target-modal-open { overflow: hidden; }
   .zone-summary-bar { grid-template-columns: 1fr; }
   .zone-section-head { align-items: flex-start; flex-direction: column; }
   .zone-card-grid { grid-template-columns: 1fr; }
+  .tenured-shift-layout { grid-template-columns: 1fr; }
 }
 /* ─── TABLE ──────────────────────────────────────────── */
 .table-wrap {

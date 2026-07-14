@@ -12,7 +12,7 @@
     rel="stylesheet">
   <link rel="preconnect" href="https://script.google.com">
   <link rel="preconnect" href="https://script.googleusercontent.com">
-  <link rel="stylesheet" href="styles.css?v=tenured-page-v67-20260714">
+  <link rel="stylesheet" href="styles.css?v=tenured-shift-v70-20260714">
 </head>
 
 <body>
@@ -165,7 +165,7 @@
                   opacity=".55" />
               </svg>
             </span>
-            <span class="nav-label">3+ Months</span>
+            <span class="nav-label">เกิน 3 เดือน</span>
           </button>
         </li>
 
@@ -507,7 +507,7 @@
             <p class="panel-eyebrow">TRAINING PERFORMANCE</p>
             <h1 class="panel-title">พนักงาน Training</h1>
           </div>
-          <p class="panel-desc">หน้านี้ใช้ Filter แยกจากภาพรวม เพื่อดู Training โดยตรง ส่วนพนักงานเกิน 3 เดือนดูแยกที่หน้า 3+ Months</p>
+          <p class="panel-desc">หน้านี้ใช้ Filter แยกจากภาพรวม เพื่อดู Training โดยตรง ส่วนพนักงานเกิน 3 เดือนดูแยกที่หน้า เกิน 3 เดือน</p>
         </div>
 
         <section class="training-filter-panel" aria-label="Training filter">
@@ -605,11 +605,11 @@
 
       </section>
 
-      <!-- TAB: 3+ MONTHS -->
+      <!-- TAB: TENURED PICKERS -->
       <section class="tab-panel" id="tab-tenured">
         <div class="panel-header picker-panel-header" style="margin-bottom: 1.25rem;">
           <div>
-            <p class="panel-eyebrow">3+ MONTH PICKER PRODUCTIVITY</p>
+            <p class="panel-eyebrow">TENURED PICKERS</p>
             <h1 class="panel-title">พนักงานเกิน 3 เดือน Productivity รวม</h1>
           </div>
           <p class="panel-desc">หน้าเฉพาะสำหรับหัวหน้า ใช้ดู Productivity ของพนักงานที่อยู่มานานแล้ว เกิน 3 เดือนจากวันล่าสุด/ช่วงวันที่ที่เลือก</p>
@@ -618,7 +618,7 @@
         <section class="training-filter-panel tenured-filter-panel" aria-label="3+ months filter">
           <div class="training-filter-head">
             <div>
-              <p class="visual-card-eyebrow">3+ MONTH FILTER</p>
+              <p class="visual-card-eyebrow">TENURED FILTER</p>
               <h2 class="visual-card-title">ช่วงข้อมูลของพนักงานเกิน 3 เดือน</h2>
             </div>
             <span class="status-pill muted" id="tenuredFilterStatus">แยกจาก Filter หลัก</span>
@@ -635,7 +635,7 @@
               <input id="tenuredStartDate" type="date" class="date-input" aria-label="วันเริ่มต้นพนักงานเกิน 3 เดือน">
               <span class="date-sep">—</span>
               <input id="tenuredEndDate" type="date" class="date-input" aria-label="วันสิ้นสุดพนักงานเกิน 3 เดือน">
-              <button id="applyTenuredDateButton" class="btn-apply" type="button">ใช้ Filter 3+ Months</button>
+              <button id="applyTenuredDateButton" class="btn-apply" type="button">ใช้ Filter เกิน 3 เดือน</button>
             </div>
           </div>
 
@@ -647,13 +647,52 @@
         <section class="tenured-section">
           <div class="panel-header" style="margin-bottom: 1rem;">
             <div>
-              <p class="panel-eyebrow">3+ MONTH BENCHMARK</p>
+              <p class="panel-eyebrow">TENURED BENCHMARK</p>
               <h2 class="panel-title">ภาพรวม Productivity คนเก่าทั้งหมด</h2>
             </div>
             <p class="panel-desc">สรุปรวม Avg Pick/Hr, จำนวนคน, Total Pick และสถานะเทียบ Target 170 จาก Results Master Column AF</p>
           </div>
 
           <div class="training-summary-grid" id="tenuredSummaryGrid" aria-label="Tenured picker summary"></div>
+
+          <div class="tenured-shift-layout">
+            <article class="visual-card tenured-shift-card">
+              <div class="visual-card-head">
+                <div>
+                  <p class="visual-card-eyebrow">SHIFT PRODUCTIVITY</p>
+                  <h2 class="visual-card-title">กราฟ Productivity แยกกะ</h2>
+                </div>
+                <span class="status-pill muted" id="tenuredShiftCountBadge">0 กะ</span>
+              </div>
+              <div class="tenured-shift-chart" id="tenuredShiftChart" aria-label="กราฟ Productivity แยกกะ"></div>
+            </article>
+
+            <article class="visual-card tenured-shift-table-card">
+              <div class="visual-card-head">
+                <div>
+                  <p class="visual-card-eyebrow">SHIFT DETAILS</p>
+                  <h2 class="visual-card-title">รายละเอียดตามกะ</h2>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="picker-table tenured-shift-table">
+                  <thead>
+                    <tr>
+                      <th>กะ</th>
+                      <th style="text-align: right;">Avg Pick/Hr</th>
+                      <th style="text-align: right;">จำนวนคน</th>
+                      <th style="text-align: right;">Total Pick</th>
+                      <th style="text-align: right;">รายการ</th>
+                      <th>สถานะ</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tenuredShiftTableBody">
+                    <!-- Populated dynamically -->
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </div>
 
           <div class="visual-card tenured-table-card">
             <div class="visual-card-head">
@@ -669,6 +708,7 @@
                   <tr>
                     <th>User ID</th>
                     <th>ชื่อ</th>
+                    <th>กะหลัก</th>
                     <th style="text-align: right;">Avg Pick/Hr</th>
                     <th style="text-align: right;">Total Pick</th>
                     <th style="text-align: right;">รายการ</th>
@@ -1017,7 +1057,7 @@
     </section>
   </div>
 
-  <script src="script.js?v=tenured-page-v67-20260714"></script>
+  <script src="script.js?v=tenured-shift-v70-20260714"></script>
   <script>
     // ===== TAB SWITCHING =====
     document.querySelectorAll('.nav-item').forEach(btn => {

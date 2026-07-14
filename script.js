@@ -257,6 +257,9 @@ const tenuredQuickFilterButtons = document.querySelectorAll("[data-tenured-range
 const tenuredFilterStatus = document.querySelector("#tenuredFilterStatus");
 const tenuredFilterNote = document.querySelector("#tenuredFilterNote");
 const tenuredSummaryGrid = document.querySelector("#tenuredSummaryGrid");
+const tenuredShiftChart = document.querySelector("#tenuredShiftChart");
+const tenuredShiftTableBody = document.querySelector("#tenuredShiftTableBody");
+const tenuredShiftCountBadge = document.querySelector("#tenuredShiftCountBadge");
 const tenuredTableBody = document.querySelector("#tenuredTableBody");
 const tenuredCountBadge = document.querySelector("#tenuredCountBadge");
 const overallGauge = document.querySelector("#overallGauge");
@@ -4696,12 +4699,90 @@ function buildPickerFirstSeenMap(indexPayload) {
   return firstSeen;
 }
 
+function formatShiftLabelForDisplay(shiftName) {
+  const value = String(shiftName || "").trim();
+
+  if (!value || value === "-" || /^not\s*found\s*data$/i.test(value)) {
+    return "ไม่พบข้อมูลกะ";
+  }
+
+  return value;
+}
+
+function formatPersonNameForDisplay(name) {
+  const value = String(name || "").trim();
+
+  if (!value || /^not\s*found\s*data$/i.test(value)) {
+    return "ไม่พบชื่อ";
+  }
+
+  return value;
+}
+
+function getPickerShiftEntries(picker) {
+  const entries = Object.entries(picker?.shifts || {})
+    .map(([shiftName, count]) => [formatShiftLabelForDisplay(shiftName), Number(count || 0)])
+    .filter(([, count]) => count > 0);
+
+  if (entries.length > 0) {
+    return entries;
+  }
+
+  return [["ไม่ระบุกะ", Number(picker?.count || 1) || 1]];
+}
+
+function addTenuredShiftContribution(rawShifts, shiftName, pickerKey, picker, weight) {
+  const key = formatShiftLabelForDisplay(shiftName);
+
+  if (!rawShifts[key]) {
+    rawShifts[key] = {
+      sum: 0,
+      count: 0,
+      totalPick: 0,
+      personKeys: new Set(),
+    };
+  }
+
+  rawShifts[key].sum += Number(picker.sum || 0) * weight;
+  rawShifts[key].count += Number(picker.count || 0) * weight;
+  rawShifts[key].totalPick += Number(picker.totalPick || 0) * weight;
+  if (pickerKey) {
+    rawShifts[key].personKeys.add(pickerKey);
+  }
+}
+
+function finalizeTenuredShiftSummary(rawShifts, target = TARGETS.overall) {
+  const totalCount = Object.values(rawShifts || {}).reduce((sum, item) => sum + Number(item.count || 0), 0);
+
+  return Object.keys(rawShifts || {}).map((shiftName) => {
+    const item = rawShifts[shiftName] || {};
+    const count = Number(item.count || 0);
+    const average = count > 0 ? Number(item.sum || 0) / count : 0;
+    const info = getStatusInfo(average, target);
+
+    return {
+      label: shiftName,
+      average: round1(average),
+      count: Math.round(count),
+      totalPick: Math.round(Number(item.totalPick || 0)),
+      peopleCount: item.personKeys?.size || 0,
+      share: totalCount > 0 ? percentOf(count, totalCount) : 0,
+      target,
+      gap: round1(average - target),
+      status: info.label,
+      className: info.className,
+    };
+  }).filter((item) => item.count > 0)
+    .sort((left, right) => Number(right.average || 0) - Number(left.average || 0) || left.label.localeCompare(right.label, "th"));
+}
+
 function buildTenuredPickerBenchmark(indexPayload, selectedKeys, endDate = "") {
   const anchorDate = endDate || selectedKeys[selectedKeys.length - 1] || getLatestDailyIndexDateKey(indexPayload);
   const cutoffDate = anchorDate ? addDaysToKey(anchorDate, -90) : "";
   const firstSeenMap = buildPickerFirstSeenMap(indexPayload);
   const rosterMap = getTrainingRosterMap(indexPayload);
   const rawPickers = createRawPickerSummary();
+  const rawShifts = {};
 
   selectedKeys.forEach((dateKey) => {
     const dayPickers = indexPayload?.dates?.[dateKey]?.pickers || {};
@@ -4744,6 +4825,12 @@ function buildTenuredPickerBenchmark(indexPayload, selectedKeys, endDate = "") {
       mergeCountMap(rawPickers[key].bu, picker.bu);
       mergeCountMap(rawPickers[key].pickTypes, picker.pickTypes);
       mergeCountMap(rawPickers[key].zones, picker.zones);
+
+      const shiftEntries = getPickerShiftEntries(picker);
+      const totalShiftCount = shiftEntries.reduce((sum, [, count]) => sum + Number(count || 0), 0) || Number(picker.count || 1) || 1;
+      shiftEntries.forEach(([shiftName, shiftCount]) => {
+        addTenuredShiftContribution(rawShifts, shiftName, key, picker, Number(shiftCount || 0) / totalShiftCount);
+      });
     });
   });
 
@@ -4767,6 +4854,7 @@ function buildTenuredPickerBenchmark(indexPayload, selectedKeys, endDate = "") {
     average: round1(totalWeightedAverage),
     target: TARGETS.overall,
     gap: round1(totalWeightedAverage - TARGETS.overall),
+    shiftSummary: finalizeTenuredShiftSummary(rawShifts, TARGETS.overall),
   };
 }
 
@@ -4837,7 +4925,73 @@ function renderTenuredFilterMeta(pageData) {
   }
 }
 
+function renderTenuredShiftBreakdown(shiftItems = []) {
+  const items = Array.isArray(shiftItems) ? shiftItems : [];
+
+  if (tenuredShiftCountBadge) {
+    tenuredShiftCountBadge.textContent = `${formatInteger(items.length)} กะ`;
+  }
+
+  if (tenuredShiftChart) {
+    if (items.length === 0) {
+      tenuredShiftChart.innerHTML = `<div class="training-empty-state">ยังไม่มีข้อมูลกะสำหรับพนักงานเกิน 3 เดือน</div>`;
+    } else {
+      const maxAverage = Math.max(...items.map((item) => Number(item.average || 0)), TARGETS.overall, 1);
+      const targetLeft = Math.min((TARGETS.overall / maxAverage) * 100, 100);
+      tenuredShiftChart.innerHTML = items.map((item) => {
+        const info = getStatusInfo(item.average, TARGETS.overall);
+        const width = Math.min((Number(item.average || 0) / maxAverage) * 100, 100);
+        return `
+          <div class="tenured-shift-row ${info.className}">
+            <div class="tenured-shift-row-head">
+              <strong>${escapeHtml(formatShiftLabelForDisplay(item.label))}</strong>
+              <span>Avg ${formatProductivityValue(item.average)} · ${formatInteger(item.peopleCount || 0)} คน</span>
+            </div>
+            <div class="tenured-shift-track" aria-label="Avg ${formatProductivityValue(item.average)} Pick/Hr">
+              <i style="width:${width}%"></i>
+              <em style="left:${targetLeft}%"></em>
+            </div>
+            <div class="tenured-shift-row-foot">
+              <span>Total Pick ${formatCompactInteger(item.totalPick || 0)}</span>
+              <span>${formatInteger(item.count || 0)} รายการ</span>
+              <span class="status-pill ${info.className}">${info.label}</span>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+  }
+
+  if (tenuredShiftTableBody) {
+    if (items.length === 0) {
+      tenuredShiftTableBody.innerHTML = `
+        <tr>
+          <td colspan="6" style="text-align:center; color: var(--text-muted); padding: 1rem;">
+            ยังไม่มีข้อมูลกะสำหรับช่วง Filter นี้
+          </td>
+        </tr>
+      `;
+    } else {
+      tenuredShiftTableBody.innerHTML = items.map((item) => {
+        const info = getStatusInfo(item.average, TARGETS.overall);
+        return `
+          <tr>
+            <td><strong>${escapeHtml(formatShiftLabelForDisplay(item.label))}</strong></td>
+            <td style="text-align: right; font-family: var(--font-mono);">${formatProductivityValue(item.average)}</td>
+            <td style="text-align: right; font-family: var(--font-mono);">${formatInteger(item.peopleCount || 0)}</td>
+            <td style="text-align: right; font-family: var(--font-mono);">${formatInteger(item.totalPick || 0)}</td>
+            <td style="text-align: right; font-family: var(--font-mono);">${formatInteger(item.count || 0)}</td>
+            <td><span class="status-pill ${info.className}">${info.label}</span></td>
+          </tr>
+        `;
+      }).join("");
+    }
+  }
+}
+
 function renderTenuredBenchmark(benchmark = {}) {
+  renderTenuredShiftBreakdown(benchmark.shiftSummary || []);
+
   if (tenuredCountBadge) {
     tenuredCountBadge.textContent = `${formatInteger(benchmark.totalPeople || 0)} คน`;
   }
@@ -4874,7 +5028,7 @@ function renderTenuredBenchmark(benchmark = {}) {
   if (rows.length === 0) {
     tenuredTableBody.innerHTML = `
       <tr>
-        <td colspan="7" style="text-align:center; color: var(--text-muted); padding: 1rem;">
+        <td colspan="8" style="text-align:center; color: var(--text-muted); padding: 1rem;">
           ยังไม่มีข้อมูลพนักงานเกิน 3 เดือนตามช่วง Filter นี้
         </td>
       </tr>
@@ -4887,7 +5041,8 @@ function renderTenuredBenchmark(benchmark = {}) {
     return `
       <tr>
         <td style="font-family: var(--font-mono); color: var(--text-muted);">${escapeHtml(item.userId || "-")}</td>
-        <td><strong>${escapeHtml(item.name || "ไม่ระบุชื่อ")}</strong></td>
+        <td><strong>${escapeHtml(formatPersonNameForDisplay(item.name))}</strong></td>
+        <td>${escapeHtml(formatShiftLabelForDisplay(item.mainShift))}</td>
         <td style="text-align: right; font-family: var(--font-mono);">${formatProductivityValue(item.average)}</td>
         <td style="text-align: right; font-family: var(--font-mono);">${formatInteger(item.totalPick || 0)}</td>
         <td style="text-align: right; font-family: var(--font-mono);">${formatInteger(item.count || 0)}</td>
