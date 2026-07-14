@@ -2354,6 +2354,7 @@ body.target-modal-open { overflow: hidden; }
 }
 
 .training-summary-card {
+  min-width: 0;
   min-height: 112px;
   display: grid;
   align-content: space-between;
@@ -2374,6 +2375,16 @@ body.target-modal-open { overflow: hidden; }
   font-family: var(--font-mono);
   font-size: clamp(2rem, 4vw, 3.2rem);
   line-height: 1;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+#tenuredSummaryGrid .training-summary-card strong {
+  font-size: clamp(1.75rem, 2.65vw, 2.6rem);
+  overflow-wrap: normal;
+  white-space: nowrap;
+  word-break: normal;
 }
 
 .training-insight-layout {

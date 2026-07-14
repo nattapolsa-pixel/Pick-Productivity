@@ -250,6 +250,12 @@ const trainingFilterStatus = document.querySelector("#trainingFilterStatus");
 const trainingFilterNote = document.querySelector("#trainingFilterNote");
 const trainingDetailTableBody = document.querySelector("#trainingDetailTableBody");
 const trainingCountBadge = document.querySelector("#trainingCountBadge");
+const tenuredStartDateInput = document.querySelector("#tenuredStartDate");
+const tenuredEndDateInput = document.querySelector("#tenuredEndDate");
+const applyTenuredDateButton = document.querySelector("#applyTenuredDateButton");
+const tenuredQuickFilterButtons = document.querySelectorAll("[data-tenured-range]");
+const tenuredFilterStatus = document.querySelector("#tenuredFilterStatus");
+const tenuredFilterNote = document.querySelector("#tenuredFilterNote");
 const tenuredSummaryGrid = document.querySelector("#tenuredSummaryGrid");
 const tenuredTableBody = document.querySelector("#tenuredTableBody");
 const tenuredCountBadge = document.querySelector("#tenuredCountBadge");
@@ -278,6 +284,7 @@ const presentActions = document.querySelector("#presentActions");
 
 let selectedRange = "latest";
 let selectedTrainingRange = "threeMonths";
+let selectedTenuredRange = "threeMonths";
 let isLoading = false;
 let dailyIndexPayload = null;
 let isDailyIndexLoading = false;
@@ -565,6 +572,21 @@ function formatProductivityValue(value) {
 
 function formatInteger(value) {
   return new Intl.NumberFormat("th-TH").format(Number(value) || 0);
+}
+
+function formatCompactInteger(value) {
+  const number = Number(value) || 0;
+  const abs = Math.abs(number);
+
+  if (abs >= 1000000) {
+    return `${new Intl.NumberFormat("th-TH", { maximumFractionDigits: 2 }).format(number / 1000000)}M`;
+  }
+
+  if (abs >= 1000) {
+    return `${new Intl.NumberFormat("th-TH", { maximumFractionDigits: 1 }).format(number / 1000)}K`;
+  }
+
+  return formatInteger(number);
 }
 
 function animateValue(element, targetValue, formatter = null, duration = 800) {
@@ -4596,6 +4618,55 @@ function normalizeTrainingDateFilterOrder() {
   }
 }
 
+function syncTenuredQuickFilterActiveState() {
+  tenuredQuickFilterButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.tenuredRange === selectedTenuredRange);
+  });
+}
+
+function setTenuredRangeInputs(range, indexPayload = dailyIndexPayload) {
+  selectedTenuredRange = range || "threeMonths";
+  const latestDate = getLatestDailyIndexDateKey(indexPayload) || toIsoDateKey(new Date());
+  let start = "";
+  let end = latestDate;
+
+  if (selectedTenuredRange === "latest") {
+    start = latestDate;
+  } else if (selectedTenuredRange === "month") {
+    start = latestDate ? `${latestDate.slice(0, 8)}01` : "";
+  } else if (selectedTenuredRange === "threeMonths") {
+    start = latestDate ? addMonthsToKey(latestDate, -3) : "";
+  } else if (selectedTenuredRange === "all") {
+    start = "";
+  }
+
+  if (tenuredStartDateInput) tenuredStartDateInput.value = start;
+  if (tenuredEndDateInput) tenuredEndDateInput.value = end;
+  syncTenuredQuickFilterActiveState();
+}
+
+function ensureTenuredFilterDefaults(indexPayload) {
+  if (!tenuredStartDateInput || !tenuredEndDateInput) {
+    return;
+  }
+
+  if (!tenuredStartDateInput.value && !tenuredEndDateInput.value) {
+    setTenuredRangeInputs(selectedTenuredRange || "threeMonths", indexPayload);
+  }
+}
+
+function normalizeTenuredDateFilterOrder() {
+  if (
+    tenuredStartDateInput?.value
+    && tenuredEndDateInput?.value
+    && tenuredStartDateInput.value > tenuredEndDateInput.value
+  ) {
+    const originalStart = tenuredStartDateInput.value;
+    tenuredStartDateInput.value = tenuredEndDateInput.value;
+    tenuredEndDateInput.value = originalStart;
+  }
+}
+
 function getTrainingRosterMap(indexPayload) {
   return (Array.isArray(indexPayload?.trainingRoster) ? indexPayload.trainingRoster : []).reduce((map, item) => {
     const key = normalizePersonKey(item.userId || item.key || item.name);
@@ -4718,6 +4789,21 @@ function buildTrainingPageDataFromDailyIndex(indexPayload) {
     generatedAt: indexPayload.generatedAt || new Date().toISOString(),
     range: { startDate, endDate },
     training: finalizeTrainingFromRaw(trainingCombined),
+  };
+}
+
+function buildTenuredPageDataFromDailyIndex(indexPayload) {
+  ensureTenuredFilterDefaults(indexPayload);
+  normalizeTenuredDateFilterOrder();
+  const latestDate = getLatestDailyIndexDateKey(indexPayload);
+  const startDate = tenuredStartDateInput?.value || "";
+  const endDate = tenuredEndDateInput?.value || latestDate || "";
+  const selectedKeys = getDailyIndexSelectedKeys(indexPayload, startDate, endDate);
+
+  return {
+    ok: true,
+    generatedAt: indexPayload.generatedAt || new Date().toISOString(),
+    range: { startDate, endDate },
     tenuredBenchmark: buildTenuredPickerBenchmark(indexPayload, selectedKeys, endDate),
   };
 }
@@ -4726,14 +4812,28 @@ function renderTrainingFilterMeta(pageData) {
   const range = pageData?.range || {};
   const startLabel = range.startDate ? isoToDmy(range.startDate) : "เริ่มต้น";
   const endLabel = range.endDate ? isoToDmy(range.endDate) : "ล่าสุด";
-  const benchmark = pageData?.tenuredBenchmark || {};
 
   if (trainingFilterStatus) {
     trainingFilterStatus.textContent = `${startLabel} ถึง ${endLabel}`;
   }
 
   if (trainingFilterNote) {
-    trainingFilterNote.textContent = `Training แยกจาก Filter หลัก · Benchmark เกิน 3 เดือนใช้ cutoff ${benchmark.cutoffDate ? isoToDmy(benchmark.cutoffDate) : "-"} · แหล่งข้อมูล Results Master Column AF`;
+    trainingFilterNote.textContent = "Training แยกจาก Filter หลัก · ใช้รายชื่อจาก Update name · Productivity จาก Results Master Column AF";
+  }
+}
+
+function renderTenuredFilterMeta(pageData) {
+  const range = pageData?.range || {};
+  const startLabel = range.startDate ? isoToDmy(range.startDate) : "เริ่มต้น";
+  const endLabel = range.endDate ? isoToDmy(range.endDate) : "ล่าสุด";
+  const benchmark = pageData?.tenuredBenchmark || {};
+
+  if (tenuredFilterStatus) {
+    tenuredFilterStatus.textContent = `${startLabel} ถึง ${endLabel}`;
+  }
+
+  if (tenuredFilterNote) {
+    tenuredFilterNote.textContent = `คนเก่า = มีข้อมูลครั้งแรกไม่เกิน ${benchmark.cutoffDate ? isoToDmy(benchmark.cutoffDate) : "-"} (ย้อนหลัง 90 วันจากวันสิ้นสุด Filter) · ตัดกลุ่ม Training ใหม่ออก · แหล่งข้อมูล Results Master Column AF`;
   }
 }
 
@@ -4757,8 +4857,8 @@ function renderTenuredBenchmark(benchmark = {}) {
       </article>
       <article class="training-summary-card is-neutral">
         <span>Total Pick</span>
-        <strong>${formatInteger(benchmark.totalPick || 0)}</strong>
-        <small>ยอดหยิบรวมในช่วงนี้</small>
+        <strong>${formatCompactInteger(benchmark.totalPick || 0)}</strong>
+        <small>ยอดหยิบรวม ${formatInteger(benchmark.totalPick || 0)} รายการ</small>
       </article>
       <article class="training-summary-card ${info.className}">
         <span>เทียบ Target ${TARGETS.overall}</span>
@@ -4806,6 +4906,16 @@ function renderTrainingPageFromDailyIndex() {
   const pageData = buildTrainingPageDataFromDailyIndex(dailyIndexPayload);
   renderTrainingFilterMeta(pageData);
   renderTrainingBreakdown(pageData.training || [], pageData);
+  return true;
+}
+
+function renderTenuredPageFromDailyIndex() {
+  if (!dailyIndexPayload || dailyIndexPayload.ok === false || dailyIndexPayload.mode !== "dailyIndex") {
+    return false;
+  }
+
+  const pageData = buildTenuredPageDataFromDailyIndex(dailyIndexPayload);
+  renderTenuredFilterMeta(pageData);
   renderTenuredBenchmark(pageData.tenuredBenchmark || {});
   return true;
 }
@@ -5151,6 +5261,8 @@ function renderDashboard(rawPayload, options = {}) {
   renderAffiliationTab(payload);
   if (!renderTrainingPageFromDailyIndex()) {
     renderTrainingBreakdown(payload.training || [], payload);
+  }
+  if (!renderTenuredPageFromDailyIndex()) {
     renderTenuredBenchmark({});
   }
 
@@ -5172,6 +5284,7 @@ function renderDashboard(rawPayload, options = {}) {
       if (shiftGrid) renderShiftBreakdown(p.shifts || [], p);
       if (buGrid) renderBuBreakdown(p.bu || [], p);
       if (!renderTrainingPageFromDailyIndex() && trainingGrid) renderTrainingBreakdown(p.training || [], p);
+      if (!renderTenuredPageFromDailyIndex()) renderTenuredBenchmark({});
       if (pickerGrid) renderPickerRankings(p.pickers || {}, p);
       if (zoneBreakdownGrid) renderZoneBreakdown(p.zones || [], p);
       renderAffiliationTab(p);
@@ -5934,6 +6047,13 @@ trainingQuickFilterButtons.forEach((button) => {
   });
 });
 
+tenuredQuickFilterButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    setTenuredRangeInputs(button.dataset.tenuredRange || "threeMonths");
+    renderTenuredPageFromDailyIndex();
+  });
+});
+
 applyDateButton.addEventListener("click", () => {
   selectedRange = "custom";
   syncQuickFilterActiveState();
@@ -5945,6 +6065,12 @@ applyTrainingDateButton?.addEventListener("click", () => {
   selectedTrainingRange = "custom";
   syncTrainingQuickFilterActiveState();
   renderTrainingPageFromDailyIndex();
+});
+
+applyTenuredDateButton?.addEventListener("click", () => {
+  selectedTenuredRange = "custom";
+  syncTenuredQuickFilterActiveState();
+  renderTenuredPageFromDailyIndex();
 });
 
 function clearPickDashboardLocalCache() {

@@ -12,7 +12,7 @@
     rel="stylesheet">
   <link rel="preconnect" href="https://script.google.com">
   <link rel="preconnect" href="https://script.googleusercontent.com">
-  <link rel="stylesheet" href="styles.css?v=training-page-v64-20260714">
+  <link rel="stylesheet" href="styles.css?v=tenured-page-v67-20260714">
 </head>
 
 <body>
@@ -152,6 +152,20 @@
               </svg>
             </span>
             <span class="nav-label">Training</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="nav-item" data-tab="tenured">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M3 12.5h10M4 10V6.5M8 10V3.5M12 10V7" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round" />
+                <path d="M3.5 3.5h3M3.5 5.5h2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"
+                  opacity=".55" />
+              </svg>
+            </span>
+            <span class="nav-label">3+ Months</span>
           </button>
         </li>
 
@@ -491,9 +505,9 @@
         <div class="panel-header picker-panel-header" style="margin-bottom: 1.25rem;">
           <div>
             <p class="panel-eyebrow">TRAINING PERFORMANCE</p>
-            <h1 class="panel-title">พนักงาน Training & Benchmark เกิน 3 เดือน</h1>
+            <h1 class="panel-title">พนักงาน Training</h1>
           </div>
-          <p class="panel-desc">หน้านี้ใช้ Filter แยกจากภาพรวม เพื่อดู Training โดยตรง และเทียบกับพนักงานที่มีประวัติการหยิบเกิน 3 เดือน</p>
+          <p class="panel-desc">หน้านี้ใช้ Filter แยกจากภาพรวม เพื่อดู Training โดยตรง ส่วนพนักงานเกิน 3 เดือนดูแยกที่หน้า 3+ Months</p>
         </div>
 
         <section class="training-filter-panel" aria-label="Training filter">
@@ -589,13 +603,54 @@
           </div>
         </div>
 
+      </section>
+
+      <!-- TAB: 3+ MONTHS -->
+      <section class="tab-panel" id="tab-tenured">
+        <div class="panel-header picker-panel-header" style="margin-bottom: 1.25rem;">
+          <div>
+            <p class="panel-eyebrow">3+ MONTH PICKER PRODUCTIVITY</p>
+            <h1 class="panel-title">พนักงานเกิน 3 เดือน Productivity รวม</h1>
+          </div>
+          <p class="panel-desc">หน้าเฉพาะสำหรับหัวหน้า ใช้ดู Productivity ของพนักงานที่อยู่มานานแล้ว เกิน 3 เดือนจากวันล่าสุด/ช่วงวันที่ที่เลือก</p>
+        </div>
+
+        <section class="training-filter-panel tenured-filter-panel" aria-label="3+ months filter">
+          <div class="training-filter-head">
+            <div>
+              <p class="visual-card-eyebrow">3+ MONTH FILTER</p>
+              <h2 class="visual-card-title">ช่วงข้อมูลของพนักงานเกิน 3 เดือน</h2>
+            </div>
+            <span class="status-pill muted" id="tenuredFilterStatus">แยกจาก Filter หลัก</span>
+          </div>
+
+          <div class="training-filter-controls">
+            <div class="quick-filters training-quick-filters">
+              <button class="chip active" type="button" data-tenured-range="threeMonths">3 เดือนล่าสุด</button>
+              <button class="chip" type="button" data-tenured-range="month">เดือนนี้</button>
+              <button class="chip" type="button" data-tenured-range="latest">วันล่าสุด</button>
+              <button class="chip" type="button" data-tenured-range="all">ทั้งหมด</button>
+            </div>
+            <div class="date-filter-row training-date-row">
+              <input id="tenuredStartDate" type="date" class="date-input" aria-label="วันเริ่มต้นพนักงานเกิน 3 เดือน">
+              <span class="date-sep">—</span>
+              <input id="tenuredEndDate" type="date" class="date-input" aria-label="วันสิ้นสุดพนักงานเกิน 3 เดือน">
+              <button id="applyTenuredDateButton" class="btn-apply" type="button">ใช้ Filter 3+ Months</button>
+            </div>
+          </div>
+
+          <p class="training-filter-note" id="tenuredFilterNote">
+            คนเก่า = มีข้อมูลการหยิบครั้งแรกก่อนวันสิ้นสุด Filter อย่างน้อย 90 วัน และไม่ใช่กลุ่ม Training ใหม่
+          </p>
+        </section>
+
         <section class="tenured-section">
           <div class="panel-header" style="margin-bottom: 1rem;">
             <div>
               <p class="panel-eyebrow">3+ MONTH BENCHMARK</p>
-              <h2 class="panel-title">พนักงานเกิน 3 เดือน Productivity ประมาณเท่าไหร่</h2>
+              <h2 class="panel-title">ภาพรวม Productivity คนเก่าทั้งหมด</h2>
             </div>
-            <p class="panel-desc">ใช้เป็นค่าเทียบให้หัวหน้า: นับคนที่มีประวัติการหยิบก่อนวันสิ้นสุด Filter อย่างน้อย 90 วัน และไม่ใช่กลุ่ม Training ใหม่</p>
+            <p class="panel-desc">สรุปรวม Avg Pick/Hr, จำนวนคน, Total Pick และสถานะเทียบ Target 170 จาก Results Master Column AF</p>
           </div>
 
           <div class="training-summary-grid" id="tenuredSummaryGrid" aria-label="Tenured picker summary"></div>
@@ -962,7 +1017,7 @@
     </section>
   </div>
 
-  <script src="script.js?v=training-page-v64-20260714"></script>
+  <script src="script.js?v=tenured-page-v67-20260714"></script>
   <script>
     // ===== TAB SWITCHING =====
     document.querySelectorAll('.nav-item').forEach(btn => {
