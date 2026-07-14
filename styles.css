@@ -1604,6 +1604,96 @@ body.target-modal-open { overflow: hidden; }
   gap: 1rem;
 }
 
+.training-filter-panel,
+.tenured-section {
+  margin-bottom: 1.5rem;
+}
+
+.training-filter-panel {
+  padding: 1rem;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+}
+
+.training-filter-head,
+.training-filter-controls {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.training-filter-head {
+  margin-bottom: .9rem;
+}
+
+.training-filter-controls {
+  align-items: center;
+}
+
+.training-quick-filters {
+  flex: 0 1 auto;
+}
+
+.training-date-row {
+  flex-wrap: wrap;
+}
+
+.training-filter-note {
+  margin-top: .85rem;
+  color: var(--text-secondary);
+  font-size: .82rem;
+}
+
+.training-section {
+  margin-bottom: 2rem;
+}
+
+.tenured-table-card {
+  margin-top: 1rem;
+}
+
+.training-detail-table-card {
+  margin-top: 1.25rem;
+}
+
+.training-detail-table-card,
+.tenured-table-card {
+  min-width: 0;
+}
+
+.picker-table {
+  width: 100%;
+  min-width: 820px;
+  border-collapse: collapse;
+}
+
+.picker-table th {
+  background: var(--bg-raised);
+  color: var(--text-muted);
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-align: left;
+  text-transform: uppercase;
+  padding: .72rem .85rem;
+  border-bottom: 1px solid var(--border-mid);
+  white-space: nowrap;
+}
+
+.picker-table td {
+  color: var(--text-secondary);
+  font-size: .8rem;
+  padding: .72rem .85rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.picker-table tr:hover td {
+  background: var(--bg-raised);
+}
+
 .training-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-mid);
@@ -2026,7 +2116,11 @@ body.target-modal-open { overflow: hidden; }
   background: var(--bg-surface);
   border: 1px solid var(--border-mid);
   border-radius: var(--radius);
-  overflow: hidden;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 .data-table {
@@ -2566,6 +2660,21 @@ body.target-modal-open { overflow: hidden; }
   .training-summary-grid,
   .training-grid {
     grid-template-columns: 1fr;
+  }
+
+  .training-filter-controls,
+  .training-date-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .training-date-row .date-input,
+  .training-date-row .btn-apply {
+    width: 100%;
+  }
+
+  .training-date-row .date-sep {
+    display: none;
   }
 
   .training-legend {

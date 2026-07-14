@@ -5,13 +5,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pick Productivity Dashboard</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231a6cf6'/%3E%3Crect x='7' y='10' width='4' height='14' rx='1.2' fill='white'/%3E%3Crect x='14' y='6' width='4' height='18' rx='1.2' fill='white' opacity='.72'/%3E%3Crect x='21' y='13' width='4' height='11' rx='1.2' fill='white' opacity='.5'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link
     href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap"
     rel="stylesheet">
   <link rel="preconnect" href="https://script.google.com">
   <link rel="preconnect" href="https://script.googleusercontent.com">
-  <link rel="stylesheet" href="styles.css?v=pick-to-sort-total-pick-v63-20260611">
+  <link rel="stylesheet" href="styles.css?v=training-page-v64-20260714">
 </head>
 
 <body>
@@ -136,7 +137,21 @@
                 <circle cx="12" cy="7" r="1.3" fill="currentColor" opacity=".55" />
               </svg>
             </span>
-            <span class="nav-label">Staff & Training</span>
+            <span class="nav-label">Staff Ranking</span>
+          </button>
+        </li>
+
+        <li>
+          <button class="nav-item" data-tab="training">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M3 4.5h10M3 8h10M3 11.5h6" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round" />
+                <path d="M11.5 10.5l1.2 1.2 2-2.4" stroke="currentColor" stroke-width="1.5"
+                  stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </span>
+            <span class="nav-label">Training</span>
           </button>
         </li>
 
@@ -457,10 +472,10 @@
       <section class="tab-panel" id="tab-pickers">
         <div class="panel-header picker-panel-header" style="margin-bottom: 2rem;">
           <div>
-            <p class="panel-eyebrow">STAFF & TRAINING PERFORMANCE</p>
-            <h1 class="panel-title">ข้อมูลรายบุคคล & ผลการฝึกงาน (Staff & Training)</h1>
+            <p class="panel-eyebrow">STAFF PERFORMANCE</p>
+            <h1 class="panel-title">จัดอันดับ Productivity รายบุคคล (Staff Ranking)</h1>
           </div>
-          <p class="panel-desc">ติดตามประสิทธิผลการทำงานรายบุคคล การจัดอันดับ Top/Bottom Pick และการฝึกงานของพนักงานใหม่</p>
+          <p class="panel-desc">ติดตามประสิทธิผลการทำงานรายบุคคลจากช่วงวันที่หลักของ Dashboard แยกจากหน้า Training</p>
         </div>
 
         <!-- SECTION: PICKER RANKING -->
@@ -469,11 +484,51 @@
           <p class="panel-desc" style="margin-bottom: 1.25rem;">จัดอันดับจาก Average Pick/Hr Column AF ตามช่วงวันที่ที่เลือก ใช้ดูคนที่ทำได้ดีและคนที่ควรติดตามก่อน</p>
           <div class="picker-grid" id="pickerGrid" aria-label="Top Pick and Bottom Pick ranking"></div>
         </div>
+      </section>
+
+      <!-- TAB: TRAINING -->
+      <section class="tab-panel" id="tab-training">
+        <div class="panel-header picker-panel-header" style="margin-bottom: 1.25rem;">
+          <div>
+            <p class="panel-eyebrow">TRAINING PERFORMANCE</p>
+            <h1 class="panel-title">พนักงาน Training & Benchmark เกิน 3 เดือน</h1>
+          </div>
+          <p class="panel-desc">หน้านี้ใช้ Filter แยกจากภาพรวม เพื่อดู Training โดยตรง และเทียบกับพนักงานที่มีประวัติการหยิบเกิน 3 เดือน</p>
+        </div>
+
+        <section class="training-filter-panel" aria-label="Training filter">
+          <div class="training-filter-head">
+            <div>
+              <p class="visual-card-eyebrow">TRAINING FILTER</p>
+              <h2 class="visual-card-title">ช่วงข้อมูลของหน้า Training</h2>
+            </div>
+            <span class="status-pill muted" id="trainingFilterStatus">แยกจาก Filter หลัก</span>
+          </div>
+
+          <div class="training-filter-controls">
+            <div class="quick-filters training-quick-filters">
+              <button class="chip active" type="button" data-training-range="threeMonths">3 เดือน</button>
+              <button class="chip" type="button" data-training-range="month">เดือนนี้</button>
+              <button class="chip" type="button" data-training-range="latest">วันล่าสุด</button>
+              <button class="chip" type="button" data-training-range="all">ทั้งหมด</button>
+            </div>
+            <div class="date-filter-row training-date-row">
+              <input id="trainingStartDate" type="date" class="date-input" aria-label="วันเริ่มต้น Training">
+              <span class="date-sep">—</span>
+              <input id="trainingEndDate" type="date" class="date-input" aria-label="วันสิ้นสุด Training">
+              <button id="applyTrainingDateButton" class="btn-apply" type="button">ใช้ Filter Training</button>
+            </div>
+          </div>
+
+          <p class="training-filter-note" id="trainingFilterNote">
+            Training ใช้รายชื่อจาก Update name และ Productivity จาก Results Master Column AF
+          </p>
+        </section>
 
         <!-- SECTION: TRAINING DEEP DIVE -->
-        <div class="training-section" style="border-top: 1px solid var(--border-subtle); padding-top: 2rem; margin-bottom: 1.5rem;">
+        <div class="training-section">
           <h2 style="font-size: 1.15rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem;">พนักงานฝึกหัด (Training Deep Dive)</h2>
-          <p class="panel-desc" style="margin-bottom: 1.25rem;">ข้อมูลพนักงานใหม่ช่วงเริ่มงานถึง 2 เดือน · วันที่เริ่ม H / วันสิ้นสุด M · ค่าเฉลี่ยจาก Column AF</p>
+          <p class="panel-desc" style="margin-bottom: 1.25rem;">ข้อมูลพนักงานใหม่ตามช่วง Training ของแต่ละคน · วันที่เริ่ม H / วันสิ้นสุด M · ค่าเฉลี่ยจาก Column AF</p>
           
           <div class="training-summary-grid" id="trainingSummaryGrid" aria-label="Training summary" style="margin-bottom: 2rem;"></div>
 
@@ -502,7 +557,77 @@
           </div>
 
           <div class="training-grid" id="trainingGrid" aria-label="Training Productivity"></div>
+
+          <div class="visual-card training-detail-table-card">
+            <div class="visual-card-head">
+              <div>
+                <p class="visual-card-eyebrow">TRAINING DETAILS</p>
+                <h2 class="visual-card-title">รายละเอียดรายคน Training</h2>
+              </div>
+              <span class="status-pill muted" id="trainingCountBadge">0 คน</span>
+            </div>
+            <div class="table-wrap">
+              <table class="picker-table">
+                <thead>
+                  <tr>
+                    <th>User ID</th>
+                    <th>ชื่อ</th>
+                    <th>ช่วง Training</th>
+                    <th style="text-align: right;">Avg Pick/Hr</th>
+                    <th style="text-align: right;">30 วันแรก</th>
+                    <th style="text-align: right;">30 วันหลัง</th>
+                    <th style="text-align: right;">วันมีข้อมูล</th>
+                    <th style="text-align: right;">รายการ</th>
+                    <th>สถานะ</th>
+                  </tr>
+                </thead>
+                <tbody id="trainingDetailTableBody">
+                  <!-- Populated dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
+
+        <section class="tenured-section">
+          <div class="panel-header" style="margin-bottom: 1rem;">
+            <div>
+              <p class="panel-eyebrow">3+ MONTH BENCHMARK</p>
+              <h2 class="panel-title">พนักงานเกิน 3 เดือน Productivity ประมาณเท่าไหร่</h2>
+            </div>
+            <p class="panel-desc">ใช้เป็นค่าเทียบให้หัวหน้า: นับคนที่มีประวัติการหยิบก่อนวันสิ้นสุด Filter อย่างน้อย 90 วัน และไม่ใช่กลุ่ม Training ใหม่</p>
+          </div>
+
+          <div class="training-summary-grid" id="tenuredSummaryGrid" aria-label="Tenured picker summary"></div>
+
+          <div class="visual-card tenured-table-card">
+            <div class="visual-card-head">
+              <div>
+                <p class="visual-card-eyebrow">SENIOR PICKERS</p>
+                <h2 class="visual-card-title">รายชื่อพนักงานเกิน 3 เดือน</h2>
+              </div>
+              <span class="status-pill muted" id="tenuredCountBadge">0 คน</span>
+            </div>
+            <div class="table-wrap">
+              <table class="picker-table">
+                <thead>
+                  <tr>
+                    <th>User ID</th>
+                    <th>ชื่อ</th>
+                    <th style="text-align: right;">Avg Pick/Hr</th>
+                    <th style="text-align: right;">Total Pick</th>
+                    <th style="text-align: right;">รายการ</th>
+                    <th>ข้อมูลแรกในระบบ</th>
+                    <th>สถานะ</th>
+                  </tr>
+                </thead>
+                <tbody id="tenuredTableBody">
+                  <!-- Populated dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
       </section>
 
       <!-- TAB: AFFILIATION -->
@@ -837,7 +962,7 @@
     </section>
   </div>
 
-  <script src="script.js?v=pick-to-sort-total-pick-v63-20260611"></script>
+  <script src="script.js?v=training-page-v64-20260714"></script>
   <script>
     // ===== TAB SWITCHING =====
     document.querySelectorAll('.nav-item').forEach(btn => {

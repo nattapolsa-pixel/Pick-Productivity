@@ -242,6 +242,17 @@ const pickerGrid = document.querySelector("#pickerGrid");
 const trainingSummaryGrid = document.querySelector("#trainingSummaryGrid");
 const trainingTrendChart = document.querySelector("#trainingTrendChart");
 const trainingFocusList = document.querySelector("#trainingFocusList");
+const trainingStartDateInput = document.querySelector("#trainingStartDate");
+const trainingEndDateInput = document.querySelector("#trainingEndDate");
+const applyTrainingDateButton = document.querySelector("#applyTrainingDateButton");
+const trainingQuickFilterButtons = document.querySelectorAll("[data-training-range]");
+const trainingFilterStatus = document.querySelector("#trainingFilterStatus");
+const trainingFilterNote = document.querySelector("#trainingFilterNote");
+const trainingDetailTableBody = document.querySelector("#trainingDetailTableBody");
+const trainingCountBadge = document.querySelector("#trainingCountBadge");
+const tenuredSummaryGrid = document.querySelector("#tenuredSummaryGrid");
+const tenuredTableBody = document.querySelector("#tenuredTableBody");
+const tenuredCountBadge = document.querySelector("#tenuredCountBadge");
 const overallGauge = document.querySelector("#overallGauge");
 const gaugeValue = document.querySelector("#gaugeValue");
 const gaugeBadge = document.querySelector("#gaugeBadge");
@@ -266,6 +277,7 @@ const presentRisks = document.querySelector("#presentRisks");
 const presentActions = document.querySelector("#presentActions");
 
 let selectedRange = "latest";
+let selectedTrainingRange = "threeMonths";
 let isLoading = false;
 let dailyIndexPayload = null;
 let isDailyIndexLoading = false;
@@ -3831,6 +3843,49 @@ function renderPickerRankings(pickers, payload = {}) {
     ${renderPickerBoard("BOTTOM PICK", "คนที่ควรโฟกัสก่อน", "เรียงจาก Avg Pick/Hr ต่ำไปสูง เพื่อใช้ติดตามรายคน", summary.bottom, "ยังไม่มีข้อมูล Bottom Pick", payload)}
   `;
 }
+
+function renderTrainingDetailTable(trainingItems) {
+  const items = Array.isArray(trainingItems) ? trainingItems : [];
+
+  if (trainingCountBadge) {
+    const withData = items.filter((item) => Number(item.count || 0) > 0).length;
+    trainingCountBadge.textContent = `${formatInteger(withData)}/${formatInteger(items.length)} คน`;
+  }
+
+  if (!trainingDetailTableBody) {
+    return;
+  }
+
+  if (items.length === 0) {
+    trainingDetailTableBody.innerHTML = `
+      <tr>
+        <td colspan="9" style="text-align:center; color: var(--text-muted); padding: 1rem;">
+          ยังไม่มีข้อมูล Training ในช่วงที่เลือก
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  trainingDetailTableBody.innerHTML = items.map((item) => {
+    const target = Number(item.target || TARGETS.training);
+    const info = getStatusInfo(item.average, target);
+    return `
+      <tr>
+        <td style="font-family: var(--font-mono); color: var(--text-muted);">${escapeHtml(item.userId || "-")}</td>
+        <td><strong>${escapeHtml(item.name || "ไม่ระบุชื่อ")}</strong></td>
+        <td>${escapeHtml(item.startDate || "-")} ถึง ${escapeHtml(item.trainingEndDate || "-")}</td>
+        <td style="text-align: right; font-family: var(--font-mono);">${formatProductivityValue(item.average)}</td>
+        <td style="text-align: right; font-family: var(--font-mono);">${formatProductivityValue(item.first30Average)}</td>
+        <td style="text-align: right; font-family: var(--font-mono);">${formatProductivityValue(item.second30Average)}</td>
+        <td style="text-align: right; font-family: var(--font-mono);">${formatInteger(item.activeDays || 0)}</td>
+        <td style="text-align: right; font-family: var(--font-mono);">${formatInteger(item.count || 0)}</td>
+        <td><span class="status-pill ${info.className}">${escapeHtml(item.targetStatus || info.label)}</span></td>
+      </tr>
+    `;
+  }).join("");
+}
+
 function renderTrainingBreakdown(trainingItems, payload = {}) {
   if (!trainingGrid) {
     return;
@@ -3840,6 +3895,7 @@ function renderTrainingBreakdown(trainingItems, payload = {}) {
   renderTrainingSummaryCards(items);
   renderTrainingTrendChart(items);
   renderTrainingFocusList(items);
+  renderTrainingDetailTable(items);
   trainingGrid.textContent = "";
 
   if (items.length === 0) {
@@ -4472,6 +4528,288 @@ function finalizeTrainingFromRaw(rawTraining) {
     .slice(0, 100);
 }
 
+function normalizePersonKey(value) {
+  return String(value === null || value === undefined ? "" : value)
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/^'+|'+$/g, "")
+    .replace(/,/g, "")
+    .replace(/[\s\u00A0]+/g, "")
+    .trim()
+    .toUpperCase();
+}
+
+function getDailyIndexSelectedKeys(indexPayload, startDate = "", endDate = "") {
+  const dateKeys = Array.isArray(indexPayload?.dateKeys) ? indexPayload.dateKeys : [];
+  return dateKeys.filter((dateKey) => {
+    if (startDate && dateKey < startDate) return false;
+    if (endDate && dateKey > endDate) return false;
+    return true;
+  });
+}
+
+function syncTrainingQuickFilterActiveState() {
+  trainingQuickFilterButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.trainingRange === selectedTrainingRange);
+  });
+}
+
+function setTrainingRangeInputs(range, indexPayload = dailyIndexPayload) {
+  selectedTrainingRange = range || "threeMonths";
+  const latestDate = getLatestDailyIndexDateKey(indexPayload) || toIsoDateKey(new Date());
+  let start = "";
+  let end = latestDate;
+
+  if (selectedTrainingRange === "latest") {
+    start = latestDate;
+  } else if (selectedTrainingRange === "month") {
+    start = latestDate ? `${latestDate.slice(0, 8)}01` : "";
+  } else if (selectedTrainingRange === "threeMonths") {
+    start = latestDate ? addMonthsToKey(latestDate, -3) : "";
+  } else if (selectedTrainingRange === "all") {
+    start = "";
+  }
+
+  if (trainingStartDateInput) trainingStartDateInput.value = start;
+  if (trainingEndDateInput) trainingEndDateInput.value = end;
+  syncTrainingQuickFilterActiveState();
+}
+
+function ensureTrainingFilterDefaults(indexPayload) {
+  if (!trainingStartDateInput || !trainingEndDateInput) {
+    return;
+  }
+
+  if (!trainingStartDateInput.value && !trainingEndDateInput.value) {
+    setTrainingRangeInputs(selectedTrainingRange || "threeMonths", indexPayload);
+  }
+}
+
+function normalizeTrainingDateFilterOrder() {
+  if (
+    trainingStartDateInput?.value
+    && trainingEndDateInput?.value
+    && trainingStartDateInput.value > trainingEndDateInput.value
+  ) {
+    const originalStart = trainingStartDateInput.value;
+    trainingStartDateInput.value = trainingEndDateInput.value;
+    trainingEndDateInput.value = originalStart;
+  }
+}
+
+function getTrainingRosterMap(indexPayload) {
+  return (Array.isArray(indexPayload?.trainingRoster) ? indexPayload.trainingRoster : []).reduce((map, item) => {
+    const key = normalizePersonKey(item.userId || item.key || item.name);
+    if (!key) return map;
+    map[key] = {
+      userId: item.userId || key,
+      name: item.name || `User ID ${item.userId || key}`,
+      startDate: toIsoDateKey(item.startDate),
+      endDate: toIsoDateKey(item.endDate),
+    };
+    return map;
+  }, {});
+}
+
+function buildPickerFirstSeenMap(indexPayload) {
+  const firstSeen = {};
+  (Array.isArray(indexPayload?.dateKeys) ? indexPayload.dateKeys : []).forEach((dateKey) => {
+    const pickers = indexPayload?.dates?.[dateKey]?.pickers || {};
+    Object.keys(pickers).forEach((pickerKey) => {
+      const picker = pickers[pickerKey] || {};
+      const key = normalizePersonKey(picker.userId || pickerKey || picker.name);
+      if (key && (!firstSeen[key] || dateKey < firstSeen[key])) {
+        firstSeen[key] = dateKey;
+      }
+    });
+  });
+  return firstSeen;
+}
+
+function buildTenuredPickerBenchmark(indexPayload, selectedKeys, endDate = "") {
+  const anchorDate = endDate || selectedKeys[selectedKeys.length - 1] || getLatestDailyIndexDateKey(indexPayload);
+  const cutoffDate = anchorDate ? addDaysToKey(anchorDate, -90) : "";
+  const firstSeenMap = buildPickerFirstSeenMap(indexPayload);
+  const rosterMap = getTrainingRosterMap(indexPayload);
+  const rawPickers = createRawPickerSummary();
+
+  selectedKeys.forEach((dateKey) => {
+    const dayPickers = indexPayload?.dates?.[dateKey]?.pickers || {};
+    Object.keys(dayPickers).forEach((pickerKey) => {
+      const picker = dayPickers[pickerKey] || {};
+      const key = normalizePersonKey(picker.userId || pickerKey || picker.name);
+      const firstSeen = firstSeenMap[key] || "";
+      const rosterItem = rosterMap[key];
+      const isNewTraining = rosterItem?.startDate && cutoffDate && rosterItem.startDate > cutoffDate;
+
+      if (!key || !firstSeen || !cutoffDate || firstSeen > cutoffDate || isNewTraining) {
+        return;
+      }
+
+      if (!rawPickers[key]) {
+        rawPickers[key] = {
+          userId: picker.userId || key,
+          name: picker.name || picker.userId || "ไม่ระบุชื่อ",
+          sum: 0,
+          count: 0,
+          totalPick: 0,
+          shifts: {},
+          affiliations: {},
+          bu: {},
+          pickTypes: {},
+          zones: {},
+          firstSeen,
+        };
+      }
+
+      rawPickers[key].firstSeen = firstSeen;
+      rawPickers[key].sum += Number(picker.sum || 0);
+      rawPickers[key].count += Number(picker.count || 0);
+      rawPickers[key].totalPick += Number(picker.totalPick || 0);
+      if (picker.name && (!rawPickers[key].name || /^User ID/i.test(rawPickers[key].name))) {
+        rawPickers[key].name = picker.name;
+      }
+      mergeCountMap(rawPickers[key].shifts, picker.shifts);
+      mergeCountMap(rawPickers[key].affiliations, picker.affiliations);
+      mergeCountMap(rawPickers[key].bu, picker.bu);
+      mergeCountMap(rawPickers[key].pickTypes, picker.pickTypes);
+      mergeCountMap(rawPickers[key].zones, picker.zones);
+    });
+  });
+
+  const rows = finalizeRawPickers(rawPickers, TARGETS.overall).all.map((item) => ({
+    ...item,
+    firstSeen: rawPickers[normalizePersonKey(item.userId || item.key)]?.firstSeen || "",
+  }));
+  const totalCount = rows.reduce((sum, item) => sum + Number(item.count || 0), 0);
+  const totalWeightedAverage = totalCount > 0
+    ? rows.reduce((sum, item) => sum + Number(item.average || 0) * Number(item.count || 0), 0) / totalCount
+    : 0;
+  const totalPick = rows.reduce((sum, item) => sum + Number(item.totalPick || 0), 0);
+
+  return {
+    cutoffDate,
+    anchorDate,
+    rows,
+    totalPeople: rows.length,
+    totalCount,
+    totalPick,
+    average: round1(totalWeightedAverage),
+    target: TARGETS.overall,
+    gap: round1(totalWeightedAverage - TARGETS.overall),
+  };
+}
+
+function buildTrainingPageDataFromDailyIndex(indexPayload) {
+  ensureTrainingFilterDefaults(indexPayload);
+  normalizeTrainingDateFilterOrder();
+  const latestDate = getLatestDailyIndexDateKey(indexPayload);
+  const startDate = trainingStartDateInput?.value || "";
+  const endDate = trainingEndDateInput?.value || latestDate || "";
+  const selectedKeys = getDailyIndexSelectedKeys(indexPayload, startDate, endDate);
+  const trainingCombined = createRawTrainingSummary();
+  seedTrainingSummaryFromRoster(trainingCombined, indexPayload.trainingRoster || []);
+
+  selectedKeys.forEach((dateKey) => {
+    mergeTrainingSummary(trainingCombined, indexPayload.dates?.[dateKey]?.training || {});
+  });
+
+  return {
+    ok: true,
+    generatedAt: indexPayload.generatedAt || new Date().toISOString(),
+    range: { startDate, endDate },
+    training: finalizeTrainingFromRaw(trainingCombined),
+    tenuredBenchmark: buildTenuredPickerBenchmark(indexPayload, selectedKeys, endDate),
+  };
+}
+
+function renderTrainingFilterMeta(pageData) {
+  const range = pageData?.range || {};
+  const startLabel = range.startDate ? isoToDmy(range.startDate) : "เริ่มต้น";
+  const endLabel = range.endDate ? isoToDmy(range.endDate) : "ล่าสุด";
+  const benchmark = pageData?.tenuredBenchmark || {};
+
+  if (trainingFilterStatus) {
+    trainingFilterStatus.textContent = `${startLabel} ถึง ${endLabel}`;
+  }
+
+  if (trainingFilterNote) {
+    trainingFilterNote.textContent = `Training แยกจาก Filter หลัก · Benchmark เกิน 3 เดือนใช้ cutoff ${benchmark.cutoffDate ? isoToDmy(benchmark.cutoffDate) : "-"} · แหล่งข้อมูล Results Master Column AF`;
+  }
+}
+
+function renderTenuredBenchmark(benchmark = {}) {
+  if (tenuredCountBadge) {
+    tenuredCountBadge.textContent = `${formatInteger(benchmark.totalPeople || 0)} คน`;
+  }
+
+  if (tenuredSummaryGrid) {
+    const info = getStatusInfo(benchmark.average, benchmark.target || TARGETS.overall);
+    tenuredSummaryGrid.innerHTML = `
+      <article class="training-summary-card ${info.className}">
+        <span>Avg Pick/Hr</span>
+        <strong>${formatProductivityValue(benchmark.average || 0)}</strong>
+        <small>ค่าเฉลี่ยกลุ่มเกิน 3 เดือน</small>
+      </article>
+      <article class="training-summary-card is-neutral">
+        <span>จำนวนพนักงาน</span>
+        <strong>${formatInteger(benchmark.totalPeople || 0)}</strong>
+        <small>มีข้อมูลในช่วง Filter</small>
+      </article>
+      <article class="training-summary-card is-neutral">
+        <span>Total Pick</span>
+        <strong>${formatInteger(benchmark.totalPick || 0)}</strong>
+        <small>ยอดหยิบรวมในช่วงนี้</small>
+      </article>
+      <article class="training-summary-card ${info.className}">
+        <span>เทียบ Target ${TARGETS.overall}</span>
+        <strong>${Number(benchmark.totalCount || 0) > 0 ? formatSignedNumber(benchmark.gap || 0) : "-"}</strong>
+        <small>${info.label}</small>
+      </article>
+    `;
+  }
+
+  if (!tenuredTableBody) return;
+
+  const rows = Array.isArray(benchmark.rows) ? benchmark.rows : [];
+  if (rows.length === 0) {
+    tenuredTableBody.innerHTML = `
+      <tr>
+        <td colspan="7" style="text-align:center; color: var(--text-muted); padding: 1rem;">
+          ยังไม่มีข้อมูลพนักงานเกิน 3 เดือนตามช่วง Filter นี้
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tenuredTableBody.innerHTML = rows.map((item) => {
+    const info = getStatusInfo(item.average, TARGETS.overall);
+    return `
+      <tr>
+        <td style="font-family: var(--font-mono); color: var(--text-muted);">${escapeHtml(item.userId || "-")}</td>
+        <td><strong>${escapeHtml(item.name || "ไม่ระบุชื่อ")}</strong></td>
+        <td style="text-align: right; font-family: var(--font-mono);">${formatProductivityValue(item.average)}</td>
+        <td style="text-align: right; font-family: var(--font-mono);">${formatInteger(item.totalPick || 0)}</td>
+        <td style="text-align: right; font-family: var(--font-mono);">${formatInteger(item.count || 0)}</td>
+        <td>${item.firstSeen ? isoToDmy(item.firstSeen) : "-"}</td>
+        <td><span class="status-pill ${info.className}">${info.label}</span></td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function renderTrainingPageFromDailyIndex() {
+  if (!dailyIndexPayload || dailyIndexPayload.ok === false || dailyIndexPayload.mode !== "dailyIndex") {
+    return false;
+  }
+
+  const pageData = buildTrainingPageDataFromDailyIndex(dailyIndexPayload);
+  renderTrainingFilterMeta(pageData);
+  renderTrainingBreakdown(pageData.training || [], pageData);
+  renderTenuredBenchmark(pageData.tenuredBenchmark || {});
+  return true;
+}
+
 function getIsoMonthKey(dateKey) {
   const match = String(dateKey || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
   return match ? `${match[1]}-${match[2]}` : "";
@@ -4811,6 +5149,10 @@ function renderDashboard(rawPayload, options = {}) {
   renderPickerRankings(payload.pickers || {}, payload);
   renderMonthlyTab(payload);
   renderAffiliationTab(payload);
+  if (!renderTrainingPageFromDailyIndex()) {
+    renderTrainingBreakdown(payload.training || [], payload);
+    renderTenuredBenchmark({});
+  }
 
   // Update sync status right away
   if (options.updateStatus !== false) {
@@ -4829,7 +5171,7 @@ function renderDashboard(rawPayload, options = {}) {
       if (pickToSortGrid) renderPickToSortDashboard(p);
       if (shiftGrid) renderShiftBreakdown(p.shifts || [], p);
       if (buGrid) renderBuBreakdown(p.bu || [], p);
-      if (trainingGrid) renderTrainingBreakdown(p.training || [], p);
+      if (!renderTrainingPageFromDailyIndex() && trainingGrid) renderTrainingBreakdown(p.training || [], p);
       if (pickerGrid) renderPickerRankings(p.pickers || {}, p);
       if (zoneBreakdownGrid) renderZoneBreakdown(p.zones || [], p);
       renderAffiliationTab(p);
@@ -5585,11 +5927,24 @@ quickFilterButtons.forEach((button) => {
   button.addEventListener("click", () => setQuickRange(button.dataset.range));
 });
 
+trainingQuickFilterButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    setTrainingRangeInputs(button.dataset.trainingRange || "threeMonths");
+    renderTrainingPageFromDailyIndex();
+  });
+});
+
 applyDateButton.addEventListener("click", () => {
   selectedRange = "custom";
   syncQuickFilterActiveState();
   updateActiveDateBanner({}, { sourceLabel: "กำลังโหลดข้อมูลตามวันที่ที่เลือก..." });
   loadSelectedRange();
+});
+
+applyTrainingDateButton?.addEventListener("click", () => {
+  selectedTrainingRange = "custom";
+  syncTrainingQuickFilterActiveState();
+  renderTrainingPageFromDailyIndex();
 });
 
 function clearPickDashboardLocalCache() {
