@@ -2,7 +2,7 @@ const RESULTS_API_URL = "https://script.google.com/macros/s/AKfycbyby7nOGMZe-w8p
 const REFRESH_INTERVAL_MS = 60 * 1000;
 const REQUEST_TIMEOUT_MS = 45000;
 const DAILY_INDEX_TIMEOUT_MS = 90000;
-const DASHBOARD_CACHE_PREFIX = "pickProductivityDashboardCache:v55-pick-to-sort-total-pick";
+const DASHBOARD_CACHE_PREFIX = "pickProductivityDashboardCache:v56-zone-v2-17zones";
 const TARGET_STORAGE_KEY = "pickProductivityTargets:v1";
 const PICK_TO_SORT_START_DATE_KEY = "2026-06-08";
 
@@ -124,10 +124,11 @@ const ZONE_GROUPS = [
     title: "Picking Productivity - Full Rack (หยิบ)",
     target: TARGETS.fullRack,
     zones: [
-      { key: "fullRackAa", title: "Picking Productivity - Zone AA", label: "AA" },
-      { key: "fullRackAgAh", title: "Picking Productivity - Zone AG-AH", label: "AG-AH" },
-      { key: "fullRackAlBl", title: "Picking Productivity - Zone AL-BL", label: "AL-BL" },
-      { key: "fullRackAnBn", title: "Picking Productivity - Zone AN-BN", label: "AN-BN" },
+      { key: "fullRackAaAf", title: "Picking Productivity - Zone AA-AF", label: "AA-AF" },
+      { key: "fullRackAg", title: "Picking Productivity - Zone AG", label: "AG" },
+      { key: "fullRackAhAi", title: "Picking Productivity - Zone AH-AI", label: "AH-AI" },
+      { key: "fullRackAjAk", title: "Picking Productivity - Zone AJ-AK", label: "AJ-AK" },
+      { key: "fullRackAlBlBmAm", title: "Picking Productivity - Zone AL-BL-BM-AM", label: "AL-BL-BM-AM" },
     ],
   },
   {
@@ -135,20 +136,39 @@ const ZONE_GROUPS = [
     title: "Picking Productivity - Half Rack (หยิบ)",
     target: TARGETS.halfRack,
     zones: [
-      { key: "halfRackAiAk", title: "Picking Productivity - Zone AI-AK", label: "AI-AK" },
-      { key: "halfRackBjBk", title: "Picking Productivity - Zone BJ-BK", label: "BJ-BK" },
-      { key: "halfRackCbCe", title: "Picking Productivity - Zone CB-CE", label: "CB-CE" },
-      { key: "halfRackCf", title: "Picking Productivity - Zone CF", label: "CF" },
+      { key: "halfRackAnCa", title: "Picking Productivity - Zone AN-CA", label: "AN-CA" },
+      { key: "halfRackBnDa", title: "Picking Productivity - Zone BN-DA", label: "BN-DA" },
+      { key: "halfRackBgBh", title: "Picking Productivity - Zone BG-BH", label: "BG-BH" },
+      { key: "halfRackBiBk", title: "Picking Productivity - Zone BI-BK", label: "BI-BK" },
+      { key: "halfRackCbDbDcCc", title: "Picking Productivity - Zone CB-DB-DC-CC", label: "CB-DB-DC-CC" },
+      { key: "halfRackCdCe", title: "Picking Productivity - Zone CD-CE", label: "CD-CE" },
+      { key: "halfRackDdDe", title: "Picking Productivity - Zone DD-DE", label: "DD-DE" },
+      { key: "halfRackCfDf", title: "Picking Productivity - Zone CF-DF", label: "CF-DF" },
     ],
   },
   {
     key: "ea",
-    title: "Picking Productivity - EA (หยิบ)",
+    title: "Picking Productivity - Micro Rack (หยิบ)",
     target: TARGETS.ea,
     zones: [
-      { key: "eaFa", title: "Picking Productivity - Zone EA-FA", label: "EA-FA", mainKpi: 85 },
-      { key: "haHb", title: "Picking Productivity - Zone HA-HB", label: "HA-HB", mainKpi: 0 },
-      { key: "ya", title: "Picking Productivity - Zone YA", label: "YA", mainKpi: 15 },
+      { key: "microEa", title: "Picking Productivity - Zone EA", label: "EA" },
+      { key: "microFa", title: "Picking Productivity - Zone FA", label: "FA" },
+    ],
+  },
+  {
+    key: "pickToSort",
+    title: "Picking Productivity - Pick to Sort",
+    target: TARGETS.pickToSort,
+    zones: [
+      { key: "pickToSortBe", title: "Picking Productivity - Zone BE", label: "BE" },
+    ],
+  },
+  {
+    key: "mezzanine",
+    title: "Picking Productivity - Mezzanine",
+    target: TARGETS.overall,
+    zones: [
+      { key: "mezzanineHb", title: "Picking Productivity - Zone HB", label: "HB" },
     ],
   },
 ];

@@ -66,10 +66,11 @@ const ZONE_GROUPS = [
     title: "Picking Productivity - Full Rack (หยิบ)",
     target: TARGETS.fullRack,
     zones: [
-      { key: "fullRackAa", title: "Picking Productivity - Zone AA", label: "AA", codes: ["AA"] },
-      { key: "fullRackAgAh", title: "Picking Productivity - Zone AG-AH", label: "AG-AH", codes: ["AG", "AH"] },
-      { key: "fullRackAlBl", title: "Picking Productivity - Zone AL-BL", label: "AL-BL", codes: ["AL", "AM", "BL"] },
-      { key: "fullRackAnBn", title: "Picking Productivity - Zone AN-BN", label: "AN-BN", codes: ["AN", "AO", "BN"] },
+      { key: "fullRackAaAf", title: "Picking Productivity - Zone AA-AF", label: "AA-AF", codes: ["AA", "AB", "AC", "AD", "AE", "AF"] },
+      { key: "fullRackAg", title: "Picking Productivity - Zone AG", label: "AG", codes: ["AG"] },
+      { key: "fullRackAhAi", title: "Picking Productivity - Zone AH-AI", label: "AH-AI", codes: ["AH", "AI"] },
+      { key: "fullRackAjAk", title: "Picking Productivity - Zone AJ-AK", label: "AJ-AK", codes: ["AJ", "AK"] },
+      { key: "fullRackAlBlBmAm", title: "Picking Productivity - Zone AL-BL-BM-AM", label: "AL-BL-BM-AM", codes: ["AL", "BL", "BM", "AM"] },
     ],
   },
   {
@@ -77,20 +78,39 @@ const ZONE_GROUPS = [
     title: "Picking Productivity - Half Rack (หยิบ)",
     target: TARGETS.halfRack,
     zones: [
-      { key: "halfRackAiAk", title: "Picking Productivity - Zone AI-AK", label: "AI-AK", codes: ["AI", "AJ", "AK"] },
-      { key: "halfRackBjBk", title: "Picking Productivity - Zone BJ-BK", label: "BJ-BK", codes: ["BJ", "BK"] },
-      { key: "halfRackCbCe", title: "Picking Productivity - Zone CB-CE", label: "CB-CE", codes: ["CB", "CC", "CD", "CE"] },
-      { key: "halfRackCf", title: "Picking Productivity - Zone CF", label: "CF", codes: ["CF"] },
+      { key: "halfRackAnCa", title: "Picking Productivity - Zone AN-CA", label: "AN-CA", codes: ["AN", "CA"] },
+      { key: "halfRackBnDa", title: "Picking Productivity - Zone BN-DA", label: "BN-DA", codes: ["BN", "DA"] },
+      { key: "halfRackBgBh", title: "Picking Productivity - Zone BG-BH", label: "BG-BH", codes: ["BG", "BH"] },
+      { key: "halfRackBiBk", title: "Picking Productivity - Zone BI-BK", label: "BI-BK", codes: ["BI", "BJ", "BK"] },
+      { key: "halfRackCbDbDcCc", title: "Picking Productivity - Zone CB-DB-DC-CC", label: "CB-DB-DC-CC", codes: ["CB", "DB", "DC", "CC"] },
+      { key: "halfRackCdCe", title: "Picking Productivity - Zone CD-CE", label: "CD-CE", codes: ["CD", "CE"] },
+      { key: "halfRackDdDe", title: "Picking Productivity - Zone DD-DE", label: "DD-DE", codes: ["DD", "DE"] },
+      { key: "halfRackCfDf", title: "Picking Productivity - Zone CF-DF", label: "CF-DF", codes: ["CF", "DF"] },
     ],
   },
   {
     key: "ea",
-    title: "Picking Productivity - EA (หยิบ)",
+    title: "Picking Productivity - Micro Rack (หยิบ)",
     target: TARGETS.ea,
     zones: [
-      { key: "eaFa", title: "Picking Productivity - Zone EA-FA", label: "EA-FA", codes: ["EA", "FA"], mainKpi: 85 },
-      { key: "haHb", title: "Picking Productivity - Zone HA-HB", label: "HA-HB", codes: ["HA", "HB"], mainKpi: 0 },
-      { key: "ya", title: "Picking Productivity - Zone YA", label: "YA", codes: ["YA"], mainKpi: 15 },
+      { key: "microEa", title: "Picking Productivity - Zone EA", label: "EA", codes: ["EA"] },
+      { key: "microFa", title: "Picking Productivity - Zone FA", label: "FA", codes: ["FA"] },
+    ],
+  },
+  {
+    key: "pickToSort",
+    title: "Picking Productivity - Pick to Sort",
+    target: TARGETS.pickToSort,
+    zones: [
+      { key: "pickToSortBe", title: "Picking Productivity - Zone BE", label: "BE", codes: ["BE"] },
+    ],
+  },
+  {
+    key: "mezzanine",
+    title: "Picking Productivity - Mezzanine",
+    target: TARGETS.overall,
+    zones: [
+      { key: "mezzanineHb", title: "Picking Productivity - Zone HB", label: "HB", codes: ["HB"] },
     ],
   },
 ];
