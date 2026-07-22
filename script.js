@@ -14,6 +14,7 @@ const DEFAULT_TARGETS = Object.freeze({
   halfRack: 200,
   ea: 170,
   pickToSort: 170,
+  mezzanine: 170,
   training: 100,
 });
 
@@ -97,8 +98,8 @@ const CATEGORY_CONFIG = [
   },
   {
     key: "ea",
-    title: "Picking Productivity - EA (หยิบ)",
-    shortTitle: "EA",
+    title: "Picking Productivity - Micro Rack (หยิบ)",
+    shortTitle: "Micro Rack",
     mainKpi: "15%",
     target: TARGETS.ea,
   },
@@ -109,13 +110,21 @@ const CATEGORY_CONFIG = [
     mainKpi: "Focus",
     target: TARGETS.pickToSort,
   },
+  {
+    key: "mezzanine",
+    title: "Picking Productivity - Mezzanine",
+    shortTitle: "Mezzanine",
+    mainKpi: "Focus",
+    target: TARGETS.mezzanine,
+  },
 ];
 
 const PICK_TYPE_DETAILS = [
   { key: "fullRack", title: "Picking Productivity - Full Rack (หยิบ)", label: "Full Rack", target: TARGETS.fullRack },
   { key: "halfRack", title: "Picking Productivity - Half Rack (หยิบ)", label: "Half Rack", target: TARGETS.halfRack },
-  { key: "ea", title: "Picking Productivity - EA(หยิบ)", label: "EA", target: TARGETS.ea },
+  { key: "ea", title: "Picking Productivity - Micro Rack (หยิบ)", label: "Micro Rack", target: TARGETS.ea },
   { key: "pickToSort", title: "Picking Productivity - Pick to Sort", label: "Pick to Sort", target: TARGETS.pickToSort },
+  { key: "mezzanine", title: "Picking Productivity - Mezzanine", label: "Mezzanine", target: TARGETS.mezzanine },
 ];
 
 const ZONE_GROUPS = [
@@ -184,6 +193,7 @@ function getPickTypeTarget(key) {
   if (key === "halfRack") return TARGETS.halfRack;
   if (key === "ea") return TARGETS.ea;
   if (key === "pickToSort") return TARGETS.pickToSort;
+  if (key === "mezzanine") return TARGETS.mezzanine;
   return TARGETS.overall;
 }
 
@@ -882,6 +892,7 @@ function normalizeDashboardPayload(payload) {
       halfRack: createSummaryFromKpi(kpiMap.halfRack, TARGETS.halfRack),
       ea: createSummaryFromKpi(kpiMap.ea, TARGETS.ea),
       pickToSort: createSummaryFromKpi(kpiMap.pickToSort, TARGETS.pickToSort),
+      mezzanine: createSummaryFromKpi(kpiMap.mezzanine, TARGETS.mezzanine),
     },
     zones: [],
     bu: [],
@@ -1642,8 +1653,9 @@ function getMonthlyAggregates() {
         let displayName = name;
         if (name === "fullRack") displayName = "Full Rack";
         else if (name === "halfRack") displayName = "Half Rack";
-        else if (name === "ea") displayName = "EA";
+        else if (name === "ea") displayName = "Micro Rack";
         else if (name === "pickToSort") displayName = "Pick to Sort";
+        else if (name === "mezzanine") displayName = "Mezzanine";
         
         return {
           name: displayName,
@@ -3669,6 +3681,40 @@ function renderBuBreakdown(buItems, payload = {}) {
   });
 }
 
+const ZONE_EXCLUDE_STORAGE_KEY = "pickProductivityExcludedZones:v1";
+
+function loadExcludedZones() {
+  try {
+    const raw = localStorage.getItem(ZONE_EXCLUDE_STORAGE_KEY);
+    if (raw) return new Set(JSON.parse(raw));
+  } catch (e) {
+    console.warn("load excluded zones failed", e);
+  }
+  return new Set();
+}
+
+function saveExcludedZones() {
+  try {
+    localStorage.setItem(ZONE_EXCLUDE_STORAGE_KEY, JSON.stringify(Array.from(zoneExcludeState)));
+  } catch (e) {
+    console.warn("save excluded zones failed", e);
+  }
+}
+
+const zoneExcludeState = loadExcludedZones();
+
+function computeZoneWeightedOverall(zones, excluded) {
+  let sum = 0, count = 0;
+  (zones || []).forEach((z) => {
+    const key = z.key || z.label;
+    if (excluded.has(key)) return;
+    const c = Number(z.count) || 0;
+    sum += (Number(z.average) || 0) * c;
+    count += c;
+  });
+  return { average: count > 0 ? sum / count : 0, count };
+}
+
 function renderZoneBreakdown(zoneGroups, payload = {}) {
   if (!zoneBreakdownGrid) return;
   zoneBreakdownGrid.textContent = "";
@@ -3714,6 +3760,45 @@ function renderZoneBreakdown(zoneGroups, payload = {}) {
   `;
   zoneBreakdownGrid.appendChild(summaryBar);
 
+  // ── แถบจำลอง: ตัดโซนออกแล้วดู Overall ที่เหลือ ──
+  const whatIfBar = document.createElement("div");
+  whatIfBar.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:4px 0 20px;padding:14px 18px;border:1px solid rgba(120,170,255,0.25);border-radius:12px;background:rgba(80,130,255,0.06);";
+  zoneBreakdownGrid.appendChild(whatIfBar);
+
+  function syncCardDimming() {
+    zoneBreakdownGrid.querySelectorAll(".zone-card[data-zone-key]").forEach((card) => {
+      const excluded = zoneExcludeState.has(card.getAttribute("data-zone-key"));
+      card.style.opacity = excluded ? "0.38" : "";
+      card.style.filter = excluded ? "grayscale(0.7)" : "";
+      const cb = card.querySelector(".zone-exclude-checkbox");
+      if (cb) cb.checked = !excluded;
+    });
+  }
+
+  function renderWhatIf() {
+    const res = computeZoneWeightedOverall(allZones, zoneExcludeState);
+    const base = computeZoneWeightedOverall(allZones, new Set());
+    const excludedN = allZones.filter((z) => zoneExcludeState.has(z.key || z.label)).length;
+    const delta = res.average - base.average;
+    const deltaTxt = excludedN === 0 ? "" : `<span style="margin-left:10px;font-size:0.85rem;color:${delta >= 0 ? "#4ade80" : "#f87171"}">${delta >= 0 ? "▲" : "▼"} ${formatNumber(Math.abs(delta))}</span>`;
+    whatIfBar.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <strong style="color:var(--text-primary);font-size:0.95rem">จำลอง: ตัดโซนออกแล้ว Overall เหลือ</strong>
+        <small style="color:var(--text-secondary)">ค่าเฉลี่ยถ่วงน้ำหนักด้วยจำนวนรายการ เฉพาะโซนที่ยังติ๊กไว้</small>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:6px">
+        <span style="font-size:1.9rem;font-weight:700;color:var(--text-primary)">${formatNumber(res.average)}</span>
+        <span style="color:var(--text-secondary)">Pick/Hr</span>${deltaTxt}
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;color:var(--text-secondary);font-size:0.85rem">
+        <span>ตัดออก <strong style="color:var(--text-primary)">${excludedN}</strong>/${allZones.length} โซน</span>
+        ${excludedN > 0 ? `<button type="button" class="zone-whatif-reset" style="cursor:pointer;border:1px solid rgba(255,255,255,0.2);background:transparent;color:var(--text-primary);border-radius:8px;padding:4px 12px">รีเซ็ต</button>` : ""}
+      </div>
+    `;
+    const resetBtn = whatIfBar.querySelector(".zone-whatif-reset");
+    if (resetBtn) resetBtn.addEventListener("click", () => { zoneExcludeState.clear(); saveExcludedZones(); syncCardDimming(); renderWhatIf(); });
+  }
+
   // ── แต่ละกลุ่ม Zone ──
   zoneGroups.forEach((group) => {
     const section = document.createElement("div");
@@ -3754,13 +3839,19 @@ function renderZoneBreakdown(zoneGroups, payload = {}) {
       const progress = Math.min(info.progress, 120);
       const overTarget = info.progress > 100;
 
+      const zoneKey = zone.key || zone.label;
       const card = document.createElement("article");
       card.className = `zone-card ${info.className}`;
+      card.setAttribute("data-zone-key", zoneKey);
       card.innerHTML = `
         <div class="zone-card-top">
           <div class="zone-card-label">${zone.title}</div>
           <span class="zone-card-badge ${info.className}">${info.label}</span>
         </div>
+        <label style="display:flex;align-items:center;gap:6px;margin:2px 0 8px;font-size:0.78rem;color:var(--text-secondary);cursor:pointer" title="ติ๊กออกเพื่อตัดโซนนี้ออกจาก Overall จำลอง">
+          <input type="checkbox" class="zone-exclude-checkbox" ${zoneExcludeState.has(zoneKey) ? "" : "checked"}>
+          <span>นับรวมใน Overall</span>
+        </label>
 
         <div class="zone-card-num">${formatNumber(zone.average)}</div>
         <div class="zone-card-unit">Avg Pick/Hr</div>
@@ -3787,12 +3878,24 @@ function renderZoneBreakdown(zoneGroups, payload = {}) {
           <span>Weight</span><strong>${weightLabel}</strong>
         </div>` : ""}
       `;
+      const excludeCb = card.querySelector(".zone-exclude-checkbox");
+      if (excludeCb) excludeCb.addEventListener("change", () => {
+        if (excludeCb.checked) zoneExcludeState.delete(zoneKey);
+        else zoneExcludeState.add(zoneKey);
+        saveExcludedZones();
+        card.style.opacity = excludeCb.checked ? "" : "0.38";
+        card.style.filter = excludeCb.checked ? "" : "grayscale(0.7)";
+        renderWhatIf();
+      });
       cardGrid.appendChild(card);
     });
 
     section.appendChild(cardGrid);
     zoneBreakdownGrid.appendChild(section);
   });
+
+  renderWhatIf();
+  syncCardDimming();
 }
 
 
@@ -4039,6 +4142,7 @@ function createRawCategorySummary() {
     halfRack: createRawBucket(),
     ea: createRawBucket(),
     pickToSort: createRawBucket(),
+    mezzanine: createRawBucket(),
   };
 }
 
@@ -5262,6 +5366,7 @@ function buildDashboardFromDailyIndex(indexPayload, filterStartDate = null, filt
       halfRack: finalizeRawBucket(combined.categories.halfRack, TARGETS.halfRack),
       ea: finalizeRawBucket(combined.categories.ea, TARGETS.ea),
       pickToSort: finalizeRawBucket(combined.categories.pickToSort, TARGETS.pickToSort),
+      mezzanine: finalizeRawBucket(combined.categories.mezzanine, TARGETS.mezzanine),
     },
     zones: finalizeDailyZones(combined.zones),
     bu: finalizeDailyBu(combined.bu),

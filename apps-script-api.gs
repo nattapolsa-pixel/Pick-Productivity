@@ -31,6 +31,7 @@ const TARGETS = {
   halfRack: 200,
   ea: 170,
   pickToSort: 170,
+  mezzanine: 170,
   training: 100,
 };
 
@@ -49,8 +50,8 @@ const PICK_TYPE_DETAILS = [
   },
   {
     key: "ea",
-    title: "Picking Productivity - EA(หยิบ)",
-    label: "EA",
+    title: "Picking Productivity - Micro Rack (หยิบ)",
+    label: "Micro Rack",
     target: TARGETS.ea,
   },
   {
@@ -58,6 +59,12 @@ const PICK_TYPE_DETAILS = [
     title: "Picking Productivity - Pick to Sort",
     label: "Pick to Sort",
     target: TARGETS.pickToSort,
+  },
+  {
+    key: "mezzanine",
+    title: "Picking Productivity - Mezzanine",
+    label: "Mezzanine",
+    target: TARGETS.mezzanine,
   },
 ];
 const ZONE_GROUPS = [
@@ -718,6 +725,7 @@ function createDailyRawSummary_() {
       halfRack: createBucket_(),
       ea: createBucket_(),
       pickToSort: createBucket_(),
+      mezzanine: createBucket_(),
     },
     zones: createZoneSummary_(),
     bu: createBuSummary_(),
@@ -827,6 +835,7 @@ function buildDashboardPayload_(startDateText, endDateText) {
     halfRack: createBucket_(),
     ea: createBucket_(),
     pickToSort: createBucket_(),
+    mezzanine: createBucket_(),
   };
   const zoneSummary = createZoneSummary_();
   const buSummary = createBuSummary_();
@@ -1020,6 +1029,7 @@ function buildDashboardPayload_(startDateText, endDateText) {
       halfRack: finalizeBucket_(summary.halfRack, TARGETS.halfRack),
       ea: finalizeBucket_(summary.ea, TARGETS.ea),
       pickToSort: finalizeBucket_(summary.pickToSort, TARGETS.pickToSort),
+      mezzanine: finalizeBucket_(summary.mezzanine, TARGETS.mezzanine),
     },
     zones: finalizeZones_(zoneSummary),
     bu: finalizeBu_(buSummary),
@@ -2079,6 +2089,7 @@ function emptyPayload_(startedAt, startDateText, endDateText) {
       halfRack: finalizeBucket_(createBucket_(), TARGETS.halfRack),
       ea: finalizeBucket_(createBucket_(), TARGETS.ea),
       pickToSort: finalizeBucket_(createBucket_(), TARGETS.pickToSort),
+      mezzanine: finalizeBucket_(createBucket_(), TARGETS.mezzanine),
     },
     zones: finalizeZones_(createZoneSummary_()),
     bu: finalizeBu_(createBuSummary_()),
@@ -2129,8 +2140,17 @@ function normalizePickType_(value) {
     return "halfRack";
   }
 
+  // "Micro Rack" (new Zone_V2 name for EA/FA) maps to the EA category
+  if (text.includes("micro")) {
+    return "ea";
+  }
+
   if (text === "ea" || text.includes("ea")) {
     return "ea";
+  }
+
+  if (text.includes("mezz")) {
+    return "mezzanine";
   }
 
   return "";
