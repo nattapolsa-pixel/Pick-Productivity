@@ -1931,9 +1931,20 @@ function normalizeBu_(value) {
 }
 
 function findZoneMatch_(position) {
-  const codes = extractPositionCodes_(position);
+  const text = String(position || "").toUpperCase().trim();
+
+  if (!text) {
+    return null;
+  }
+
+  if (zoneMatchCache[text] !== undefined) {
+    return zoneMatchCache[text];
+  }
+
+  const codes = extractPositionCodes_(text);
 
   if (codes.length === 0) {
+    zoneMatchCache[text] = null;
     return null;
   }
 
@@ -1945,14 +1956,17 @@ function findZoneMatch_(position) {
       const isMatched = codes.some((code) => zone.codes.indexOf(code) >= 0);
 
       if (isMatched) {
-        return {
+        const result = {
           groupKey: group.key,
           zoneKey: zone.key,
         };
+        zoneMatchCache[text] = result;
+        return result;
       }
     }
   }
 
+  zoneMatchCache[text] = null;
   return null;
 }
 
@@ -1963,13 +1977,28 @@ function extractPositionCodes_(position) {
     return [];
   }
 
-  const matches = text.match(/[A-Z]{2}/g) || [];
-
-  if (matches.length > 0) {
-    return matches;
+  const IGNORED_WORDS = ["DAY", "NIGHT", "SHIFT", "DAILY", "ADMIN", "TOTAL", "NONE", "NULL", "N/A"];
+  if (IGNORED_WORDS.indexOf(text) >= 0) {
+    return [];
   }
 
-  return text.length >= 2 ? [text.slice(0, 2)] : [];
+  const ALL_VALID_ZONES = [
+    "AA", "AB", "AC", "AD", "AE", "AF", "AG", "AH", "AI", "AJ", "AK", "AL", "AM", "AN",
+    "BE", "BG", "BH", "BI", "BJ", "BK", "BL", "BM", "BN",
+    "CA", "CB", "CC", "CD", "CE", "CF",
+    "DA", "DB", "DC", "DD", "DE", "DF",
+    "EA", "FA", "HB"
+  ];
+
+  const foundCodes = [];
+  ALL_VALID_ZONES.forEach((code) => {
+    const regex = new RegExp(`(?:^|[^A-Z])${code}(?:$|[^A-Z0-9]|\\d)`, "i");
+    if (regex.test(text)) {
+      foundCodes.push(code);
+    }
+  });
+
+  return foundCodes;
 }
 
 function saveDailyIndexPayload_(cacheKey, payload) {
