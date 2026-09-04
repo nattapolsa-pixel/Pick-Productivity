@@ -16,6 +16,23 @@ const DEFAULT_TARGETS = Object.freeze({
   pickToSort: 170,
   mezzanine: 170,
   training: 100,
+  fullRackAaAf: 170,
+  fullRackAg: 170,
+  fullRackAhAi: 170,
+  fullRackAjAk: 170,
+  fullRackAlBlBmAm: 170,
+  halfRackAnCa: 200,
+  halfRackBnDa: 200,
+  halfRackBgBh: 200,
+  halfRackBiBk: 200,
+  halfRackCbDbDcCc: 200,
+  halfRackCdCe: 200,
+  halfRackDdDe: 200,
+  halfRackCfDf: 200,
+  microEa: 170,
+  microFa: 170,
+  pickToSortBe: 170,
+  mezzanineHb: 170,
 });
 
 function setCookie(name, value, days = 365) {
@@ -197,6 +214,13 @@ function getPickTypeTarget(key) {
   return TARGETS.overall;
 }
 
+function getZoneTarget(zoneKey, groupKey) {
+  const zoneTarget = Number(TARGETS[zoneKey]);
+  return Number.isFinite(zoneTarget) && zoneTarget > 0
+    ? zoneTarget
+    : getPickTypeTarget(groupKey);
+}
+
 function syncTargetReferences() {
   CATEGORY_CONFIG.forEach((config) => {
     config.target = getPickTypeTarget(config.key);
@@ -208,6 +232,9 @@ function syncTargetReferences() {
 
   ZONE_GROUPS.forEach((group) => {
     group.target = getPickTypeTarget(group.key);
+    group.zones.forEach((zone) => {
+      zone.target = getZoneTarget(zone.key, group.key);
+    });
   });
 }
 
@@ -318,6 +345,7 @@ const presentActions = document.querySelector("#presentActions");
 let selectedRange = "latest";
 let selectedTrainingRange = "threeMonths";
 let selectedTenuredRange = "threeMonths";
+let lastRenderedPayload = null;
 let isLoading = false;
 let dailyIndexPayload = null;
 let isDailyIndexLoading = false;
@@ -1035,8 +1063,9 @@ function applyCurrentTargets(payload) {
     const groupTarget = getPickTypeTarget(group.key);
     group.target = groupTarget;
     (Array.isArray(group.zones) ? group.zones : []).forEach((zone) => {
-      zone.target = groupTarget;
-      applyTargetToSummary(zone, groupTarget);
+      const zoneTarget = getZoneTarget(zone.key, group.key);
+      zone.target = zoneTarget;
+      applyTargetToSummary(zone, zoneTarget);
     });
   });
 
@@ -3822,7 +3851,7 @@ function renderZoneBreakdown(zoneGroups, payload = {}) {
       </div>
       <div class="zone-section-meta">
         <span class="zone-section-pill ${groupStatusClass}">${groupGood}/${zoneRows.length} ผ่าน Target</span>
-        <span class="zone-section-target">Target ≥ ${group.target}</span>
+        <span class="zone-section-target">Target แยกราย Zone</span>
       </div>
     `;
     section.appendChild(sectionHead);
@@ -4399,7 +4428,7 @@ function finalizeDailyZones(rawZones) {
       title: zone.title,
       label: zone.label,
       mainKpi: typeof zone.mainKpi === "number" ? zone.mainKpi : null,
-      ...finalizeRawBucket(rawZones[group.key][zone.key], group.target),
+      ...finalizeRawBucket(rawZones[group.key][zone.key], getZoneTarget(zone.key, group.key)),
     })),
   }));
 }
