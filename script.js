@@ -1820,25 +1820,25 @@ function buildYearlyProductivitySvg(monthsData, metricLabel, displayMode = "affi
   if (m > 0) {
     const groupBars = [];
     monthsData.forEach((d, index) => {
-      const barWidth = Math.min(36, step * 0.4);
-      const x = pad.left + (index * step) - (barWidth / 2);
+      // Each bar represents that item's actual Avg Pick/Hr.  Do not stack
+      // weighted contributions here: a stacked contribution can grow when the
+      // item's share grows even though its Avg Pick/Hr has fallen.
+      const groupWidth = Math.min(84, step * 0.72);
+      const barGap = m > 1 ? 3 : 0;
+      const barWidth = Math.max(4, (groupWidth - (barGap * (m - 1))) / m);
+      const groupStart = pad.left + (index * step) - (groupWidth / 2);
       const tooltip = monthlyTooltips[index];
-      
-      const totalCount = d.transactions;
-      let cumulativeValue = 0;
 
       distinctItems.forEach((itemName, k) => {
         const items = d[itemsKey] || [];
         const item = items.find(a => a.name === itemName);
         if (!item || item.count === 0) return;
 
-        // Calculate weighted average contribution: average * (count / total_transactions)
-        const weight = totalCount > 0 ? item.count / totalCount : 0;
-        const val = item.rawAverage * weight;
-        
-        const yStart = yOf(cumulativeValue);
-        const yEnd = yOf(cumulativeValue + val);
+        const actualAverage = Number(item.rawAverage || item.average || 0);
+        const yEnd = yOf(actualAverage);
+        const yStart = pad.top + plotHeight;
         const barHeight = Math.max(1, yStart - yEnd);
+        const x = groupStart + (k * (barWidth + barGap));
         const colorObj = AFFILIATION_COLORS[k % AFFILIATION_COLORS.length];
 
         groupBars.push(`
@@ -1851,8 +1851,6 @@ function buildYearlyProductivitySvg(monthsData, metricLabel, displayMode = "affi
             <line x1="${x}" y1="${yEnd}" x2="${x + barWidth}" y2="${yEnd}" stroke="${colorObj.stroke}" stroke-width="0.75" style="opacity: 0.8;" />
           </g>
         `);
-
-        cumulativeValue += val;
       });
     });
     bars = groupBars.join("");
