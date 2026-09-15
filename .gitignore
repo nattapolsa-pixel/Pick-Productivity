@@ -1,1 +1,4 @@
 .codex-backup/
+sync-to-github.ps1
+sync-to-github.bat
+.sync-branch

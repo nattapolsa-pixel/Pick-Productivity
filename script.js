@@ -262,7 +262,7 @@ const themeToggleButton = document.querySelector("#themeToggleButton");
 const targetSettingsModal = document.querySelector("#targetSettingsModal");
 const targetSettingsForm = document.querySelector("#targetSettingsForm");
 const targetSettingsClose = document.querySelector("#targetSettingsClose");
-const targetSettingsReset = document.querySelector("#targetSettingsReset");
+const targetSettingsCancel = document.querySelector("#targetSettingsCancel");
 const targetInputs = document.querySelectorAll("[data-target-input]");
 const targetCloseElements = document.querySelectorAll("[data-target-close]");
 const targetLabels = document.querySelectorAll("[data-target-label]");
@@ -6328,9 +6328,9 @@ function initializeTargetSettings() {
     setSyncStatus("บันทึก Target ใหม่แล้ว");
   });
 
-  targetSettingsReset?.addEventListener("click", () => {
-    updateTargets(DEFAULT_TARGETS, "กลับค่า Target เริ่มต้น");
-    setSyncStatus("กลับค่า Target เริ่มต้นแล้ว");
+  targetSettingsCancel?.addEventListener("click", () => {
+    setTargetFormValues();
+    closeTargetSettings();
   });
 
   document.addEventListener("keydown", (event) => {
