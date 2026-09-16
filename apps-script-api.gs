@@ -3,7 +3,7 @@ const RESULTS_SHEET_NAME = "Results Master";
 const UPDATE_NAME_SHEET_NAME = "Update name";
 
 const CACHE_SECONDS = 300;
-const CACHE_VERSION = "v48-pick-to-sort-total-pick";
+const CACHE_VERSION = "v49-ajak-half-rack";
 const PICK_TO_SORT_START_DATE_KEY = "2026-06-08";
 
 const SHEET_COLUMN = {
@@ -76,7 +76,6 @@ const ZONE_GROUPS = [
       { key: "fullRackAaAf", title: "Picking Productivity - Zone AA-AF", label: "AA-AF", codes: ["AA", "AB", "AC", "AD", "AE", "AF"] },
       { key: "fullRackAg", title: "Picking Productivity - Zone AG", label: "AG", codes: ["AG"] },
       { key: "fullRackAhAi", title: "Picking Productivity - Zone AH-AI", label: "AH-AI", codes: ["AH", "AI"] },
-      { key: "fullRackAjAk", title: "Picking Productivity - Zone AJ-AK", label: "AJ-AK", codes: ["AJ", "AK"] },
       { key: "fullRackAlBlBmAm", title: "Picking Productivity - Zone AL-BL-BM-AM", label: "AL-BL-BM-AM", codes: ["AL", "BL", "BM", "AM"] },
     ],
   },
@@ -85,6 +84,8 @@ const ZONE_GROUPS = [
     title: "Picking Productivity - Half Rack (หยิบ)",
     target: TARGETS.halfRack,
     zones: [
+      // AJ-AK ย้ายมาจากกลุ่ม Full Rack (Target ยังคงเป็น 170 ไม่ใช่ 200 ตามกลุ่ม Half Rack)
+      { key: "halfRackAjAk", title: "Picking Productivity - Zone AJ-AK", label: "AJ-AK", codes: ["AJ", "AK"] },
       { key: "halfRackAnCa", title: "Picking Productivity - Zone AN-CA", label: "AN-CA", codes: ["AN", "CA"] },
       { key: "halfRackBnDa", title: "Picking Productivity - Zone BN-DA", label: "BN-DA", codes: ["BN", "DA"] },
       { key: "halfRackBgBh", title: "Picking Productivity - Zone BG-BH", label: "BG-BH", codes: ["BG", "BH"] },

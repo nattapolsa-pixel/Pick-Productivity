@@ -2,7 +2,7 @@ const RESULTS_API_URL = "https://script.google.com/macros/s/AKfycbyby7nOGMZe-w8p
 const REFRESH_INTERVAL_MS = 60 * 1000;
 const REQUEST_TIMEOUT_MS = 45000;
 const DAILY_INDEX_TIMEOUT_MS = 90000;
-const DASHBOARD_CACHE_PREFIX = "pickProductivityDashboardCache:v56-zone-v2-17zones";
+const DASHBOARD_CACHE_PREFIX = "pickProductivityDashboardCache:v57-ajak-half-rack";
 const TARGET_STORAGE_KEY = "pickProductivityTargets:v1";
 const PICK_TO_SORT_START_DATE_KEY = "2026-06-08";
 
@@ -19,8 +19,8 @@ const DEFAULT_TARGETS = Object.freeze({
   fullRackAaAf: 170,
   fullRackAg: 170,
   fullRackAhAi: 170,
-  fullRackAjAk: 170,
   fullRackAlBlBmAm: 170,
+  halfRackAjAk: 170, // ย้ายมาจาก Full Rack - คง Target 170 ไว้ (ไม่ใช่ 200 ตาม Zone อื่นในกลุ่ม Half Rack)
   halfRackAnCa: 200,
   halfRackBnDa: 200,
   halfRackBgBh: 200,
@@ -75,6 +75,15 @@ function readStoredTargets() {
         saved = cookieSaved;
       }
     }
+    // ย้าย Key เดิมที่ผู้ใช้เคยตั้งค่าไว้ ไม่ให้ค่าที่ตั้งเองหายเวลา Zone ย้ายกลุ่ม
+    const RENAMED_TARGET_KEYS = { fullRackAjAk: "halfRackAjAk" };
+    Object.keys(RENAMED_TARGET_KEYS).forEach((oldKey) => {
+      const newKey = RENAMED_TARGET_KEYS[oldKey];
+      if (saved[oldKey] !== undefined && saved[newKey] === undefined) {
+        saved[newKey] = saved[oldKey];
+      }
+    });
+
     return Object.keys(DEFAULT_TARGETS).reduce((config, key) => {
       const value = Number(saved[key]);
       config[key] = Number.isFinite(value) && value > 0 ? Math.round(value) : DEFAULT_TARGETS[key];
@@ -153,7 +162,6 @@ const ZONE_GROUPS = [
       { key: "fullRackAaAf", title: "Picking Productivity - Zone AA-AF", label: "AA-AF" },
       { key: "fullRackAg", title: "Picking Productivity - Zone AG", label: "AG" },
       { key: "fullRackAhAi", title: "Picking Productivity - Zone AH-AI", label: "AH-AI" },
-      { key: "fullRackAjAk", title: "Picking Productivity - Zone AJ-AK", label: "AJ-AK" },
       { key: "fullRackAlBlBmAm", title: "Picking Productivity - Zone AL-BL-BM-AM", label: "AL-BL-BM-AM" },
     ],
   },
@@ -162,6 +170,8 @@ const ZONE_GROUPS = [
     title: "Picking Productivity - Half Rack (หยิบ)",
     target: TARGETS.halfRack,
     zones: [
+      // AJ-AK ย้ายมาจากกลุ่ม Full Rack - legacySource ไว้อ่าน payload จาก Apps Script รุ่นก่อนย้าย (ลบออกได้หลัง deploy .gs ใหม่แล้ว)
+      { key: "halfRackAjAk", title: "Picking Productivity - Zone AJ-AK", label: "AJ-AK", legacySource: { groupKey: "fullRack", zoneKey: "fullRackAjAk" } },
       { key: "halfRackAnCa", title: "Picking Productivity - Zone AN-CA", label: "AN-CA" },
       { key: "halfRackBnDa", title: "Picking Productivity - Zone BN-DA", label: "BN-DA" },
       { key: "halfRackBgBh", title: "Picking Productivity - Zone BG-BH", label: "BG-BH" },
@@ -4394,7 +4404,10 @@ function mergeDailySummary(combined, day, dateKey = "") {
 
   ZONE_GROUPS.forEach((group) => {
     group.zones.forEach((zone) => {
-      addRawBucket(combined.zones[group.key][zone.key], day.zones?.[group.key]?.[zone.key]);
+      // อ่าน path ปัจจุบันก่อน ถ้าไม่มีค่อย fallback ไป path เดิม (payload เก่าที่ Zone ยังอยู่กลุ่มก่อนย้าย)
+      const zoneBucket = day.zones?.[group.key]?.[zone.key]
+        || (zone.legacySource ? day.zones?.[zone.legacySource.groupKey]?.[zone.legacySource.zoneKey] : null);
+      addRawBucket(combined.zones[group.key][zone.key], zoneBucket);
     });
   });
 
